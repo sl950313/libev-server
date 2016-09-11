@@ -91,14 +91,14 @@ int main(int argc, char **argv) {
       char data[256];
       char true_data[12] = "hello";
       while (1) {
-         printf("in send data loop\n");
+         //printf("in send data loop\n");
          memset(data, 0, 256);
          memcpy(data, project_id, 8);
          memcpy(data + 8, device_id_t, 8);
          memcpy(data + 16, true_data, strlen(true_data));
-         int nsend = send(client_socket, data, 16 + strlen(true_data), 0);
-         printf("nsend = %d\n", nsend);
-         sleep(1);
+         //int nsend = send(client_socket, data, 16 + strlen(true_data), 0);
+         //printf("nsend = %d\n", nsend);
+         sleep(4);
       }
    }
 

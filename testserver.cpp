@@ -116,10 +116,10 @@ int getSigByDeviceId(char device_id[8]) {
    if (((device_id[0] & 0xFF) >= (0x01 & 0xFF)) && ((device_id[0] & 0xFF) <= (0x1F & 0xFF))) {
       return 0;
    }
-   if (((device_id[0] & 0xFF) >= (0x20 & 0xFF)) && ((device_id[0] & 0xFF) <= (0x1F & 0x2F))) {
+   if (((device_id[0] & 0xFF) >= (0x20 & 0xFF)) && ((device_id[0] & 0xFF) <= (0xFF & 0x2F))) {
       return 1;
    }
-   if (((device_id[0] & 0xFF) >= (0x30 & 0xFF)) && ((device_id[0] & 0xFF) <= (0x1F & 0x3F))) {
+   if (((device_id[0] & 0xFF) >= (0x30 & 0xFF)) && ((device_id[0] & 0xFF) <= (0xFF & 0x3F))) {
       return 2;
    }
    return -1;
@@ -146,9 +146,9 @@ int *getTransmitFdsByrules(char project_id[8], char device_id[8], int fd, int *l
    if (sig == 1) send = 0;
    if (sig == 2) send = 2;
    printf("in getTransmitFdsByrules send = %d\n", send);
-   if (send > 0) {
-      for (set<int>::iterator ite = it->second[send].begin(); ite != it->second[i].end(); ++ite) {
-         res[i++] = (*ite);
+   if (send >= 0) {
+      for (set<int>::iterator ite = it->second[send].begin(); ite != it->second[send].end(); ++ite) {
+         if ((*ite) != fd) res[i++] = (*ite);
       }
    } else {
       res[i++] = fd;
@@ -205,7 +205,10 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    // transmit data to other divice depend on some rules.
    int len = 0;
    int *transmit_fds = getTransmitFdsByrules(project_id, device_id, watcher->fd, &len);
-   printf("len = %d\n", len);
+   printf("fd = %d\tlen = %d\n", watcher->fd, len);
+   for (int i = 0; i < len; ++i) {
+      printf("transmit_fds[%d] = %d\n", i, transmit_fds[i]);
+   }
    int i = 0;
    for (i = 0; i < len; ++i) {
       send(transmit_fds[i], data, strlen(data), 0);
@@ -281,6 +284,8 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    memcpy(device_id, buffer + 8, 8);
    data = buffer + 16;
    int sig = getSigByDeviceId(device_id);
+
+   /*
    if (sig == -1) {
       printf("error ID\n");
       result[0] = 0x01;
@@ -288,7 +293,8 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       freelibev(loop, watcher->fd);
       return ;
    }
-   printf("project_id = %s, device_id = %s\n", project_id, device_id);
+   */
+   //printf("project_id = %s, device_id = %s\n", project_id, device_id);
    printf("sig = %d\n", sig);
 
    /** TODO check the ID can be used or not.*/
