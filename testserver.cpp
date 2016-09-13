@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <ev.h> //ev库头文件
+#include <ev.h> 
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -15,6 +15,7 @@
 #include "_struct.h"
 #include "sql.h"
 #include "macro.h"
+#include "mainwindow.h"
 
 using namespace std;
 
@@ -36,6 +37,7 @@ int buffer_len = 0;
 pthread_mutex_t buffer_list_mutex;
 pthread_cond_t buffer_list_cond;
 MYSQL *mysql = NULL;
+MainWindow *w = NULL;
 //user_fd_sign *project_ids[1024];
 
 /**
@@ -196,6 +198,8 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       printf("read error\n");  
       return;  
    }  
+
+   unsigned long long device_id_tmp, project_id_tmp;
    if(read == 0)  {  
       printf("client disconnected.\n");  
       /**
@@ -205,9 +209,22 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       freeProjectMap(watcher->fd);
       freeUserfdSign(watcher->fd);
       freelibev(loop, watcher->fd);  
+      char tmp[128];
+      memset(tmp, 0, 128);
+
+      memcpy(&device_id_tmp, users[watcher->fd]->device_id, 8);
+      memcpy(&project_id_tmp, users[watcher->fd]->project_id, 8);
+      //sprintf(tmp, "device id:%llx, project id:%llx, ip:%s leave the server", device_id_tmp, project_id_tmp, users[watcher->fd]->ip);
+      //w->sendMsg((string)tmp);
       return;  
    }
    printf("in read_cb receive message:%s\n", buffer); 
+   char s_tmp[128];
+   memset(s_tmp, 0, 128);
+   memcpy(&device_id_tmp, users[watcher->fd]->device_id, 8);
+   memcpy(&project_id_tmp, users[watcher->fd]->project_id, 8);
+   sprintf(s_tmp, "in read_cb receive message from device_id:%llx, project_id:%llx , ip:%s",  device_id_tmp, project_id_tmp, users[watcher->fd]->ip);
+   w->sendMsg((string)s_tmp);
 
    /*
    char project_id[8], device_id[8];
@@ -317,19 +334,27 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    } 
    //printf("receive message:%s\n", buffer); 
    printf("receive msg\n");
+   //w->sendMsg("receive msg");
    ssize_t i = 0;
    for (i = 0; i < read; i++) {
       printf("buffer[%ld] = %x\n", i, buffer[i]);
+      char s_tmp[64];
+      memset(s_tmp, 0, 64);
+      sprintf(s_tmp, "buffer[%ld] = %x", i, buffer[i]);
+      string s_t = s_tmp;
+      //w->sendMsg(s_t);
    }
    char result[1] = {0x00};
    if (checkRegMsg(buffer)) {
       printf("check msg ID error\n");
+      w->sendMsg("check msg ID error");
       result[0] = 0x01;
       send(watcher->fd, result, 1, 0);
       freelibev(loop, watcher->fd);
       return ;
    }
    printf("ID is right\n");
+   //w->sendMsg("ID is right");
 
    char project_id[8], device_id[8];
    char *data = NULL;
@@ -370,6 +395,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       printf("device_id[%d] = %x\n", i, device_id[i]);
    }
 
+
    //ev_break(EV_A_ EVBREAK_ONE);
    int fd = watcher->fd;
    ev_io_stop(EV_A_ watcher);
@@ -406,6 +432,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    printf("user_num = %d\n", user_num);
    printf("users[%d].ip = %s\n", fd, users[fd]->ip);
 
+
    project_id_type project_id_tmp;
    memcpy(project_id_tmp.project_id, project_id, 8);
    fd_device_id_type fd_device_id;
@@ -426,6 +453,16 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    }
    printf("insert ok!\n");
 
+   char str_tmp[128];
+   memset(str_tmp, 0, 128);
+   unsigned long long project_id_t;
+   memcpy(&device_id_tmp, fd_device_id.device_id, 8);
+   memcpy(&project_id_t, project_id_tmp.project_id, 8);
+   sprintf(str_tmp, "userID:%llx, projectID:%llx from %s:%d enter service", device_id_tmp, project_id_t, users[fd]->ip, users[fd]->port);
+   printf("str_tmp = %s\n", str_tmp);
+
+   w->sendMsg((string)str_tmp);
+
    libevlist[fd] = data_transform;
    ev_io_init(data_transform, read_cb, fd, EV_READ);
    ev_io_start(loop, data_transform);
@@ -439,16 +476,19 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
    if(w_client == NULL) {  
       printf("malloc error in accept_cb\n");  
+      w->sendMsg("malloc error in accept_cb");
       return ;  
    }  
 
    if(EV_ERROR & revents) {  
       printf("error event in accept\n");  
+      w->sendMsg("error event in accept");
       return ;  
    }  
    client_sd = accept(watcher->fd, (struct sockaddr*)&client_addr, &client_len);  
    if(client_sd < 0)  {  
       printf("accept error\n");  
+      w->sendMsg("accept error");
       free(w_client);
       return;  
    } 
@@ -459,6 +499,7 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       return ;  
    }  
    printf("accept request success\n");
+   w->sendMsg("accept request success");
 
    if(libevlist[client_sd] != NULL)  {  
       printf("client_sd not NULL fd is [%d]\n", client_sd);  
@@ -467,6 +508,7 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       return ;  
    }  
    printf("client connected\n");
+   w->sendMsg("client connected");
    // send comfirm msg to clinet.
 
    char msg[8] = "comfirm";
@@ -480,8 +522,7 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    libevlist[client_sd] = w_client;
 }
 
-int main(int argc,char **args) {
-   int sd;  
+int initServer(int &sd) {
    struct sockaddr_in addr;  
    //int addr_len = sizeof(addr);
    sd = socket(PF_INET, SOCK_STREAM, 0);
@@ -513,7 +554,18 @@ int main(int argc,char **args) {
       return -1;  
    }  
    printf("Reuse success\n");
+   return 0;
+}
 
+void *init_server(void *arg) {
+   w = (MainWindow *)arg;
+   int ret = 0;
+   int sd = 0;
+   if ((ret = initServer(sd)) == -1) {
+      //printf("error happen in initServer()\n");
+      w->sendMsg("error happen in initServer()");
+      return (void *)-1;
+   }
    /**
     * some initial work.
     */
@@ -524,7 +576,8 @@ int main(int argc,char **args) {
    mysql = initSql(ip_string, user_name, password, database_name);
    if (mysql == NULL) {
       printf("error may happen in mysql\n");
-      return -1;
+      w->sendMsg("error may happen in mysql");
+      return (void *)-1;
    }
    pthread_mutex_init(&buffer_list_mutex, NULL);
    pthread_cond_init(&buffer_list_cond, NULL);
@@ -534,7 +587,8 @@ int main(int argc,char **args) {
    libevlist[sd] = (ev_io *)malloc(sizeof(ev_io));
    if (libevlist[sd] == NULL) {
       printf("malloc error\n");
-      return -1;
+      w->sendMsg("malloc error");
+      return (void *) -1;
    }
 
    //ev_timer timeout_watcher;
@@ -542,13 +596,18 @@ int main(int argc,char **args) {
    ev_io_init(libevlist[sd], accept_cb, sd, EV_READ);
    ev_io_start(loop, libevlist[sd]);
 
-
-   /*
-      ev_timer_init(&timeout_watcher,timeout_cb,5.5,0);
-      ev_timer_start(loop,&timeout_watcher);
-    */
-
    printf("loop running\n");
+   w->sendMsg("loop running");
    ev_run(loop,0);
-   return 0;
+   return (void *)0;
 }
+
+/*
+int main() {
+   int ret = init();
+   if (ret == -1) {
+      printf("error in init()\n");
+      return -1;
+   }
+}
+*/
