@@ -27,32 +27,39 @@ int user_num = 0;
 
 map<project_id_type, vector<set<fd_device_id_type > > > project_ids;
 
+map<project_device_id_type, int> online_users;
+
 //struct user_send_data *usd_buffer_head = NULL;
 //struct user_send_data *usd_buffer_tail = NULL;
 struct user_send_data usd_buffer[1024];
 int usd_head = -1, usd_tail = 0;
 int max_buffer_len = 1024;
 int buffer_len = 0;
+int is_update = 1;
 
+pthread_mutex_t users_lock;
+pthread_mutex_t online_users_lock;
+pthread_mutex_t libevlist_lock;
 pthread_mutex_t buffer_list_mutex;
 pthread_cond_t buffer_list_cond;
 MYSQL *mysql = NULL;
 MainWindow *w = NULL;
+FILE *log_file_fp = NULL;
 //user_fd_sign *project_ids[1024];
+
+const char *server_log_file = "server.log";
+const int log_level = 3;
 
 /**
  * total ev_io watcher.
  */
 struct ev_io *libevlist[MAX_ALLOWED_CLIENT] = {NULL};
-
-static void timeout_cb(EV_P_ ev_timer *w,int revents) {
-   puts("timeout");
-   ev_break(EV_A_ EVBREAK_ONE);
-}
+struct ev_loop *loop = EV_DEFAULT;
 
 int freelibev(struct ev_loop *loop, int fd) {
    struct timeval end_time;
    gettimeofday(&end_time, NULL);
+   pthread_mutex_lock(&libevlist_lock);
    if(libevlist[fd] == NULL)  {  
       printf("the fd already freed[%d]\n", fd);  
       return -1;  
@@ -62,6 +69,7 @@ int freelibev(struct ev_loop *loop, int fd) {
    ev_io_stop(loop, libevlist[fd]);  
    free(libevlist[fd]);  
    libevlist[fd] = NULL;  
+   pthread_mutex_unlock(&libevlist_lock);
 
    return 1; 
 }
@@ -71,28 +79,54 @@ int updateToDatabase(int fd) {
    return 0;
 }
 
+int freeOnlineUserMap(int fd) {
+   project_device_id_type pd_id;
+   pthread_mutex_lock(&users_lock);
+   memcpy(&(pd_id.device_id), users[fd]->device_id, 8);
+   memcpy(&(pd_id.project_id), users[fd]->project_id, 8);
+   pthread_mutex_unlock(&users_lock);
+   //pd_id.fd = fd;
+
+   pthread_mutex_lock(&online_users_lock);
+   map<project_device_id_type, int>::iterator it = online_users.find(pd_id);
+   if (it != online_users.end()) { 
+      online_users.erase(it);
+      pthread_mutex_unlock(&online_users_lock);
+   } else {
+      printf("error in freeOnlineUserMap may happen\n");
+      pthread_mutex_unlock(&online_users_lock);
+      return -1;
+   }
+   return 0;
+}
+
 int freeUserfdSign(int fd) {
+   pthread_mutex_lock(&users_lock);
    free(users[fd]);
    users[fd] = NULL;
+   pthread_mutex_unlock(&users_lock);
    user_num--;
    return 0;
 }
 
 int freeProjectMap(int fd) {
    project_id_type project_id;
+   unsigned long long device_id_t;
    memset(project_id.project_id, 0, 8);
+   fd_device_id_type fd_device_id;
+   fd_device_id.fd = fd;
+   pthread_mutex_lock(&users_lock);
+   memcpy(fd_device_id.device_id, users[fd]->device_id, 8);
    memcpy(project_id.project_id, users[fd]->project_id, 8);
+   pthread_mutex_unlock(&users_lock);
+   memcpy(&device_id_t, fd_device_id.device_id, 8);
+
    map<project_id_type, vector<set<fd_device_id_type> > >::iterator it = project_ids.find(project_id);
    if (it == project_ids.end()) {
       printf("some error may happen in freeProjectMap\n");
       return -1;
    }
    size_t i = 0;
-   fd_device_id_type fd_device_id;
-   fd_device_id.fd = fd;
-   memcpy(fd_device_id.device_id, users[fd]->device_id, 8);
-   unsigned long long device_id_t;
-   memcpy(&device_id_t, users[fd]->device_id, 8);
    printf("should be del fd = %d, device_id = %llx\n", fd, device_id_t);
    /*
     * debug
@@ -152,13 +186,15 @@ int *getTransmitFdsByrules(int fd, int *length) {
 
    project_id_type project_id_t;
    memset(project_id_t.project_id, 0, 8);
+   pthread_mutex_lock(&users_lock);
    memcpy(project_id_t.project_id, users[fd]->project_id, 8);
+   int sig = getSigByDeviceId(users[fd]->device_id);
+   pthread_mutex_unlock(&users_lock);
    map<project_id_type, vector<set<fd_device_id_type> > >::iterator it = project_ids.find(project_id_t);
    if (it == project_ids.end()) {
       printf("here should not be excute\n");
       return res;
    }
-   int sig = getSigByDeviceId(users[fd]->device_id);
    printf("in getTransmitFdsByrules sig = %d\n", sig);
    int send = -1;
    send = sig;
@@ -205,17 +241,18 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       /**
        * free user login info. and project info.@sl
        */
-      updateToDatabase(watcher->fd);
-      freeProjectMap(watcher->fd);
-      freeUserfdSign(watcher->fd);
-      freelibev(loop, watcher->fd);  
+
       char tmp[128];
       memset(tmp, 0, 128);
-
       memcpy(&device_id_tmp, users[watcher->fd]->device_id, 8);
       memcpy(&project_id_tmp, users[watcher->fd]->project_id, 8);
-      //sprintf(tmp, "device id:%llx, project id:%llx, ip:%s leave the server", device_id_tmp, project_id_tmp, users[watcher->fd]->ip);
-      //w->sendMsg((string)tmp);
+      sprintf(tmp, "device id:%llx, project id:%llx, ip:%s leave the server", device_id_tmp, project_id_tmp, users[watcher->fd]->ip);
+      w->sendMsg((string)tmp);
+      updateToDatabase(watcher->fd);
+      freeProjectMap(watcher->fd);
+      freeOnlineUserMap(watcher->fd);
+      freeUserfdSign(watcher->fd);
+      freelibev(loop, watcher->fd);
       return;  
    }
    printf("in read_cb receive message:%s\n", buffer); 
@@ -223,32 +260,12 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    memset(s_tmp, 0, 128);
    memcpy(&device_id_tmp, users[watcher->fd]->device_id, 8);
    memcpy(&project_id_tmp, users[watcher->fd]->project_id, 8);
-   sprintf(s_tmp, "in read_cb receive message from device_id:%llx, project_id:%llx , ip:%s",  device_id_tmp, project_id_tmp, users[watcher->fd]->ip);
+   sprintf(s_tmp, "receive message:%s from device_id:%llx, project_id:%llx , ip:%s",  buffer, device_id_tmp, project_id_tmp, users[watcher->fd]->ip);
    w->sendMsg((string)s_tmp);
 
-   /*
-   char project_id[8], device_id[8];
-   char *data = NULL;
-   //analysis(buffer, project_id, device_id, data);
-   memcpy(project_id, buffer, 8);
-   memcpy(device_id, buffer + 8, 8);
-   */
    char *data = buffer;
-   /*
-   printf("project_id = ");
-   for (int i = 0; i < 8; ++i) {
-      printf("%x ", project_id[i]);
-   }
-   printf("\n");
-   printf("device_id = ");
-   for (int i = 0; i < 8; ++i) {
-      printf("%x ", device_id[i]);
-   }
-   printf("\n");
-   */
    printf("data = %s\n", data);
-   //printf("project_id = %s, device_id = %s, data = %s\n", project_id, device_id, data);
-   // write data to database.
+   
    // transmit data to other divice depend on some rules.
    int len = 0;
    int *transmit_fds = getTransmitFdsByrules(watcher->fd, &len);
@@ -266,9 +283,9 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       memcpy(usd_buffer[usd_head].data, data, strlen(data));
    }
    if (usd_head - usd_tail + 1 >= ONCE_WRITE_LEN) {
+      printf("send a signal to read thread\n");
       pthread_cond_signal(&buffer_list_cond);
    }
-   printf("send a signal to read thread\n");
 
    pthread_mutex_unlock(&buffer_list_mutex);
    int i = 0;
@@ -312,7 +329,7 @@ int checkReduplicateID(char project_id[8], char device_id[8]) {
 void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    char buffer[ID_SIZE];
    ssize_t read;
-   int _register = 0;
+   //int _register = 0;
 
    if(EV_ERROR & revents)  {  
       printf("error event in read\n");  
@@ -326,7 +343,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       return;  
    }  
    if(read == 0)  {  
-      printf("client disconnected.\n");  
+      printf("in comfirm_cb client disconnected.\n");  
       //close(watcher->fd);
       //ev_io_stop(EV_A_ watcher);
       freelibev(loop, watcher->fd);  
@@ -391,9 +408,11 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       return ; 
    }
    printf("not reduplicateID. ID = %llx\n", device_id_tmp);
+   /*
    for (int i = 0; i < 8; i++) {
       printf("device_id[%d] = %x\n", i, device_id[i]);
    }
+   */
 
 
    //ev_break(EV_A_ EVBREAK_ONE);
@@ -421,6 +440,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       freelibev(loop, watcher->fd);
       return ;
    }
+   pthread_mutex_lock(&users_lock);
    users[fd] = (struct user_fd_sign *)malloc(sizeof(user_fd_sign));
    char *ip = inet_ntoa(sa.sin_addr);
    memcpy(users[fd]->ip, ip, strlen(ip));
@@ -428,10 +448,10 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    memcpy(users[fd]->project_id ,project_id, 8);
    memcpy(users[fd]->device_id, device_id, 8);
    gettimeofday(&(users[fd]->begin_time), NULL);
+   pthread_mutex_unlock(&users_lock);
    user_num++;
    printf("user_num = %d\n", user_num);
    printf("users[%d].ip = %s\n", fd, users[fd]->ip);
-
 
    project_id_type project_id_tmp;
    memcpy(project_id_tmp.project_id, project_id, 8);
@@ -453,6 +473,40 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    }
    printf("insert ok!\n");
 
+   /**
+    * insert into online_users.
+    */
+   project_device_id_type project_device_t;
+   memcpy(&(project_device_t.device_id), device_id, 8);
+   memcpy(&(project_device_t.project_id), project_id, 8);
+   //project_device_t.fd = fd;
+
+   pthread_mutex_lock(&online_users_lock);
+   map<project_device_id_type, int>::iterator ite = online_users.find(project_device_t);
+   unsigned long long t1, t2;
+   memcpy(&t1, project_device_t.project_id, 8);
+   memcpy(&t2, project_device_t.device_id, 8); 
+   printf("t1 = %llx, t2 = %llx\n", t1, t2);
+
+   printf("online_users.length = %ld\n", online_users.size());
+   for (map<project_device_id_type, int>::iterator it_tmp = online_users.begin(); it_tmp != online_users.end(); ++it_tmp) {
+      unsigned long long t1, t2;
+      memcpy(&t1, it_tmp->first.project_id, 8);
+      memcpy(&t2, it_tmp->first.device_id, 8); 
+      printf("it_tmp->first.project_id = %llx, it_tmp->first.device_id = %llx\n", t1, t2);
+   }
+   if (ite != online_users.end()) {
+      unsigned long long t1, t2;
+      memcpy(&t1, ite->first.project_id, 8);
+      memcpy(&t2, ite->first.device_id, 8);
+      printf("ite->first.project_id = %llx, ite->first.device_id = %llx\n", t1, t2);
+      printf("duplicate ID!\n");
+      printf("and here should not be excute\n");
+      return ;
+   }
+   online_users.insert(pair<project_device_id_type, int>(project_device_t, fd));
+   pthread_mutex_unlock(&online_users_lock);
+
    char str_tmp[128];
    memset(str_tmp, 0, 128);
    unsigned long long project_id_t;
@@ -463,9 +517,11 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
    w->sendMsg((string)str_tmp);
 
+   pthread_mutex_lock(&libevlist_lock);
    libevlist[fd] = data_transform;
    ev_io_init(data_transform, read_cb, fd, EV_READ);
    ev_io_start(loop, data_transform);
+   pthread_mutex_unlock(&libevlist_lock);
 }
 
 void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
@@ -503,6 +559,7 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
    if(libevlist[client_sd] != NULL)  {  
       printf("client_sd not NULL fd is [%d]\n", client_sd);  
+      printf("here should not be excute\n");
       //free(w_client);
       close(client_sd);
       return ;  
@@ -513,10 +570,7 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
    char msg[8] = "comfirm";
    send(client_sd, msg, 8, 0);
-   //ev_io_stop(EV_A_ watcher);
-   //libevlist[client_sd] = (ev_io *)malloc(sizeof(ev_io));
    ev_io_init(w_client, comfirm_cb, client_sd, EV_READ);
-   //ev_io_init(w_client, read_cb, client_sd, EV_READ);  
    ev_io_start(loop, w_client);  
 
    libevlist[client_sd] = w_client;
@@ -566,6 +620,12 @@ void *init_server(void *arg) {
       w->sendMsg("error happen in initServer()");
       return (void *)-1;
    }
+   /*
+      if ((log_file_fp = fopen(server_log_file, "r+")) == NULL) { 
+      w->sendMsg("error open log file.");
+      return (void *)-1;
+      }
+    */
    /**
     * some initial work.
     */
@@ -579,11 +639,16 @@ void *init_server(void *arg) {
       w->sendMsg("error may happen in mysql");
       return (void *)-1;
    }
+   pthread_mutex_init(&users_lock, NULL);
+   pthread_mutex_init(&online_users_lock, NULL);
    pthread_mutex_init(&buffer_list_mutex, NULL);
+   pthread_mutex_init(&libevlist_lock, NULL);
    pthread_cond_init(&buffer_list_cond, NULL);
-   pthread_t comsume_id;
+   pthread_t comsume_id, update_id;
    pthread_create(&comsume_id, NULL, comsume, (void *)mysql);
+   //pthread_create(&update_id, NULL, updateOnlineUsers, (void *)0);
 
+   pthread_mutex_lock(&libevlist_lock);
    libevlist[sd] = (ev_io *)malloc(sizeof(ev_io));
    if (libevlist[sd] == NULL) {
       printf("malloc error\n");
@@ -592,9 +657,9 @@ void *init_server(void *arg) {
    }
 
    //ev_timer timeout_watcher;
-   struct ev_loop *loop = EV_DEFAULT;
    ev_io_init(libevlist[sd], accept_cb, sd, EV_READ);
    ev_io_start(loop, libevlist[sd]);
+   pthread_mutex_unlock(&libevlist_lock);
 
    printf("loop running\n");
    w->sendMsg("loop running");
@@ -603,11 +668,11 @@ void *init_server(void *arg) {
 }
 
 /*
-int main() {
+   int main() {
    int ret = init();
    if (ret == -1) {
-      printf("error in init()\n");
-      return -1;
+   printf("error in init()\n");
+   return -1;
    }
-}
-*/
+   }
+ */

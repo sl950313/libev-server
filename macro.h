@@ -16,4 +16,8 @@
 #define APP_PC_2_APP_PC 1 /* 20-2F */
 #define DEVICE_2_DEVICE 2 /* 30-3F */
 
+#define ERROR 1
+#define INFO 2
+#define DEBUG 3
+
 #endif /**/

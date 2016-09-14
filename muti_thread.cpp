@@ -1,9 +1,11 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include "_struct.h"
 #include "sql.h"
 #include "macro.h"
+#include "mainwindow.h"
 
 
 extern struct user_send_data usd_buffer[1024]; 
@@ -13,6 +15,7 @@ extern pthread_mutex_t buffer_list_mutex;
 extern pthread_cond_t buffer_list_cond;
 extern int max_buffer_len;
 extern int buffer_len;
+extern int is_update;
 
 #define min(a, b) ((a) < (b)) ? (a) : (b)
 
@@ -78,4 +81,18 @@ void *comsume(void *arg) {
 }
 
 void product() {
+}
+
+void *updateOnlineUsers(void *arg) {
+   MainWindow *w = (MainWindow *)arg;
+   while (1) {
+       printf("in updateOnlineUsers while\n");
+      if (is_update) { 
+          printf("is_update = 1. here\n");
+         w->sendUpdateMsg();
+         printf("sendUpdateMsg\n");
+      }
+      sleep(2);
+   }
+   return (void *)0;
 }

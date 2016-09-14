@@ -4,4 +4,6 @@
 void *comsume(void *arg);
 void product();
 
+void *updateOnlineUsers(void *arg); 
+
 #endif /**/
