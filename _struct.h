@@ -63,6 +63,8 @@ struct user_fd_sign {
    user_fd_sign() {
       memset(ip, 0, 32);
       port = -1;
+      memset(project_id, 0, 8);
+      memset(device_id, 0, 8);
    }
 };
 #endif /** _STRUCT_H */

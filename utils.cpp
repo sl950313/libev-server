@@ -8,12 +8,14 @@
 #include <string.h>
 #include <map>
 #include <ev.h>
+#include <set>
 
 using namespace std;
 
-extern pthread_mutex_t online_users_lock;
+extern pthread_mutex_t online_users_lock, forbidden_IDs_lock;
 extern map<project_device_id_type, int> online_users;
 extern struct ev_loop *loop;
+extern set<project_device_id_type> forbidden_IDs;
 
 void wlog(int mode, char *log, FILE *fp) { 
    //fprintf(fp, )
@@ -46,5 +48,29 @@ int delID(unsigned long long *project_id_num, unsigned long long *device_id_num,
    freelibev(loop, fd);
    QMessageBox::information(w, "info", "ID success forbidden");
 
+   pthread_mutex_lock(&forbidden_IDs_lock);
+   forbidden_IDs.insert(pdt);
+   printf("after insert fobiddent_IDs.size() = %ld\n", forbidden_IDs.size());
+   pthread_mutex_unlock(&forbidden_IDs_lock);
+   w->sendUPdateForbiddenIDs(*project_id_num, *device_id_num);
+
    return 0;
+}
+
+int recoverID(unsigned long long *project_id_num, unsigned long long *device_id_num, MainWindow *w) {
+  project_device_id_type pdt;
+  memcpy(pdt.project_id, project_id_num, 8);
+  memcpy(pdt.device_id, device_id_num, 8);
+
+  pthread_mutex_lock(&forbidden_IDs_lock);
+  set<project_device_id_type>::iterator it = forbidden_IDs.find(pdt);
+  if (it != forbidden_IDs.end()) {
+      forbidden_IDs.erase(it);
+      pthread_mutex_unlock(&forbidden_IDs_lock);
+      QMessageBox::information(w, "info", "ID success recover");
+    } else {
+      pthread_mutex_unlock(&forbidden_IDs_lock);
+      QMessageBox::information(w, "info", "ID not forbidden yet");
+    }
+  w->sendUPdateForbiddenIDs(0, 0);
 }

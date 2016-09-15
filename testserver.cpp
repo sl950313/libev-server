@@ -28,6 +28,7 @@ int user_num = 0;
 map<project_id_type, vector<set<fd_device_id_type > > > project_ids;
 
 map<project_device_id_type, int> online_users;
+set<project_device_id_type> forbidden_IDs;
 
 //struct user_send_data *usd_buffer_head = NULL;
 //struct user_send_data *usd_buffer_tail = NULL;
@@ -37,6 +38,7 @@ int max_buffer_len = 1024;
 int buffer_len = 0;
 int is_update = 1;
 
+pthread_mutex_t forbidden_IDs_lock;
 pthread_mutex_t users_lock;
 pthread_mutex_t online_users_lock;
 pthread_mutex_t libevlist_lock;
@@ -182,7 +184,6 @@ int *getTransmitFdsByrules(int fd, int *length) {
    // TODO:
    printf("in getTransmitFdsByrules fd = %d\n", fd);
    int *res = (int *)malloc(sizeof(int) * 1024);
-   int i = 0; 
 
    project_id_type project_id_t;
    memset(project_id_t.project_id, 0, 8);
@@ -201,28 +202,30 @@ int *getTransmitFdsByrules(int fd, int *length) {
    if (sig == 0) send = 1;
    if (sig == 1) send = 0;
    if (sig == 2) send = 2;
+   int len = 0; 
    printf("in getTransmitFdsByrules send = %d\n", send);
    if (send < 3) {
       for (set<fd_device_id_type>::iterator ite = it->second[send].begin(); ite != it->second[send].end(); ++ite) {
-         if ((*ite).fd != fd) res[i++] = (*ite).fd;
+         if ((*ite).fd != fd) res[len++] = (*ite).fd;
       }
    } else {
-      if (send == 3) res[i++] = fd; 
+      if (send == 3) res[len++] = fd; 
       if (send == 4) {
          for (size_t i = 0; i < it->second.size(); ++i) {
-            for (set<fd_device_id_type>::iterator ite = it->second[send].begin(); ite != it->second[send].end(); ++ite) {
-               if ((*ite).fd != fd) res[i++] = (*ite).fd;
+            for (set<fd_device_id_type>::iterator ite = it->second[i].begin(); ite != it->second[i].end(); ++ite) {
+               if ((*ite).fd != fd) res[len++] = (*ite).fd;
             } 
          }
       }
    }
-   (*length) = i;
+   (*length) = len;
    printf("*length = %d\n", *length);
    return res;
 }
 
 void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    char buffer[BUFFER_SIZE];  
+   memset(buffer, 0, BUFFER_SIZE);
    ssize_t read;  
 
    if(EV_ERROR & revents)  {  
@@ -325,6 +328,21 @@ int checkReduplicateID(char project_id[8], char device_id[8]) {
    return 0;
 }
 
+int isForbiddenID(char project_id[8], char device_id[8]) {
+   printf("in isForbiddenID\n");
+   project_device_id_type pdt;
+   memcpy(pdt.project_id, project_id, 8);
+   memcpy(pdt.device_id, device_id, 8);
+   printf("in waiting for forbidden_IDs_lock\n");
+   pthread_mutex_lock(&forbidden_IDs_lock);
+   printf("get forbidden_IDs_lock\n");
+   if (forbidden_IDs.find(pdt) != forbidden_IDs.end()) {
+      pthread_mutex_unlock(&forbidden_IDs_lock);
+      return 1;
+   }
+   pthread_mutex_unlock(&forbidden_IDs_lock);
+   return 0;
+}
 
 void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    char buffer[ID_SIZE];
@@ -336,7 +354,8 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       freelibev(loop, watcher->fd);  
       return ;  
    }  
-   read = recv(watcher->fd, buffer, BUFFER_SIZE, 0);  
+   read = recv(watcher->fd, buffer, ID_SIZE, 0);  
+   printf("in comfirm _cb\n");
    if(read < 0)  {  
       printf("read error\n");  
       freelibev(loop, watcher->fd);  
@@ -370,6 +389,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       freelibev(loop, watcher->fd);
       return ;
    }
+   
    printf("ID is right\n");
    //w->sendMsg("ID is right");
 
@@ -379,6 +399,12 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    memcpy(project_id, buffer, 8);
    memcpy(device_id, buffer + 8, 8);
    data = buffer + 16;
+   if (isForbiddenID(project_id, device_id)) {
+      printf("id is forbidden by server\n");
+      w->sendMsg("id is forbidden by server");
+      char result[] = "ID is forbidden";
+      send(watcher->fd, result, strlen(result), 0);
+   }
    int sig = getSigByDeviceId(device_id);
    if (sig < 0) {
       printf("ID error\n");
@@ -443,24 +469,36 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    pthread_mutex_lock(&users_lock);
    users[fd] = (struct user_fd_sign *)malloc(sizeof(user_fd_sign));
    char *ip = inet_ntoa(sa.sin_addr);
+   printf("ip = %s\nip.length = %ld\n", ip, strlen(ip));
+   memset(users[fd]->ip, 0, 32);
    memcpy(users[fd]->ip, ip, strlen(ip));
+   printf("after memcpy, users[fd]->ip.length = %ld\n", strlen(users[fd]->ip));
    users[fd]->port = ntohs(sa.sin_port);
    memcpy(users[fd]->project_id ,project_id, 8);
    memcpy(users[fd]->device_id, device_id, 8);
    gettimeofday(&(users[fd]->begin_time), NULL);
    pthread_mutex_unlock(&users_lock);
+
    user_num++;
    printf("user_num = %d\n", user_num);
    printf("users[%d].ip = %s\n", fd, users[fd]->ip);
+   printf("users[%d].ip.len = %ld\n", fd, strlen(users[fd]->ip));
 
    project_id_type project_id_tmp;
+   memset(project_id_tmp.project_id, 0, 8);
    memcpy(project_id_tmp.project_id, project_id, 8);
    fd_device_id_type fd_device_id;
+   memset(fd_device_id.device_id, 0, 8);
    fd_device_id.fd = fd;
    memcpy(fd_device_id.device_id, device_id, 8);
+   //sleep(3);
+
+   printf("project_id:");
+
+   //printf("project_id_tmp = %llx\n", project_id_tmp);
    map<project_id_type, vector<set<fd_device_id_type> > >::iterator it = project_ids.find(project_id_tmp);
    if (it == project_ids.end()) {
-      vector<set<fd_device_id_type> > same_p_id(3);
+      vector<set<fd_device_id_type> > same_p_id(5);
       same_p_id[sig].insert(fd_device_id);
       project_ids.insert(pair<project_id_type, vector<set<fd_device_id_type> > >(project_id_tmp, same_p_id));
       printf("create a new project, ID = \n");
@@ -481,7 +519,9 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    memcpy(&(project_device_t.project_id), project_id, 8);
    //project_device_t.fd = fd;
 
+   printf("waiting for online_users_lock\n");
    pthread_mutex_lock(&online_users_lock);
+   printf("get lock\n");
    map<project_device_id_type, int>::iterator ite = online_users.find(project_device_t);
    unsigned long long t1, t2;
    memcpy(&t1, project_device_t.project_id, 8);
@@ -639,6 +679,8 @@ void *init_server(void *arg) {
       w->sendMsg("error may happen in mysql");
       return (void *)-1;
    }
+
+   pthread_mutex_init(&forbidden_IDs_lock, NULL);
    pthread_mutex_init(&users_lock, NULL);
    pthread_mutex_init(&online_users_lock, NULL);
    pthread_mutex_init(&buffer_list_mutex, NULL);

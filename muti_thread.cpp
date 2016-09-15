@@ -12,6 +12,7 @@ extern struct user_send_data usd_buffer[1024];
 extern user_fd_sign *users[MAX_ALLOWED_CLIENT];
 extern int usd_head, usd_tail;
 extern pthread_mutex_t buffer_list_mutex;
+extern pthread_mutex_t users_lock;
 extern pthread_cond_t buffer_list_cond;
 extern int max_buffer_len;
 extern int buffer_len;
@@ -60,6 +61,7 @@ void *comsume(void *arg) {
       printf("here bug?\n");
       int i = 0;
       char sql[1024] ;
+      pthread_mutex_lock(&users_lock);
       for (i = 0; i < len; ++i) { 
          unsigned long long project_id_t, device_id_t;
          memcpy(&project_id_t, (users[buffer_data[i].fd]->project_id), 8);
@@ -70,6 +72,7 @@ void *comsume(void *arg) {
          printf("insert success\n");
          //TODO:
       }
+      pthread_mutex_unlock(&users_lock);
       //excuteSql(mysql, "COMMIT");
       mysql_query(mysql, "COMMIT");
       // write to database.
