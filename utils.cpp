@@ -1,3 +1,4 @@
+#include "macro.h"
 #include "utils.h"
 #include "_struct.h"
 #include "testserver.h"
@@ -16,8 +17,22 @@ extern pthread_mutex_t online_users_lock, forbidden_IDs_lock;
 extern map<project_device_id_type, int> online_users;
 extern struct ev_loop *loop;
 extern set<project_device_id_type> forbidden_IDs;
+extern FILE *log_file_fp;
 
-void wlog(int mode, char *log, FILE *fp) { 
+char *mode2str(int mode) {
+   switch (mode) {
+   case ERROR:
+      return "ERROR";
+   case INFO:
+      return "INFO";
+   case DEBUG:
+      return "DEBUG";
+   }
+   return "";
+}
+
+void wlog(int mode, char *log) { 
+   fprintf(log_file_fp, "%s:%s\n", mode2str(mode), log);
    //fprintf(fp, )
 }
 

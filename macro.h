@@ -20,4 +20,9 @@
 #define INFO 2
 #define DEBUG 3
 
+/*
+ * show windows size.
+ */
+#define WINDOWSIZE 6
+
 #endif /**/

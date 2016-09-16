@@ -25,17 +25,17 @@ void *comsume(void *arg) {
    user_send_data *buffer_data = NULL;
    pthread_mutex_lock(&buffer_list_mutex);
 
-   printf("usd_head = %d\tusd_tail = %d\n", usd_head, usd_tail);
+   ////printf("usd_head = %d\tusd_tail = %d\n", usd_head, usd_tail);
    int len = min(ONCE_WRITE_LEN, usd_head - usd_tail) + 1;
    while (len < ONCE_WRITE_LEN) {
       len = min(10, usd_head - usd_tail) + 1;
-      printf("data len < ONCE_WRITE_LEN is less so we should wait\n");
+      //printf("data len < ONCE_WRITE_LEN is less so we should wait\n");
       pthread_cond_wait(&buffer_list_cond, &buffer_list_mutex);
       printf("here we may check again .\n");
    }
 
    // then we read the data.
-   printf("in comsume len = %d\n", len);
+   //printf("in comsume len = %d\n", len);
    if (len > 0) {
       buffer_data = (user_send_data *)malloc(sizeof(user_send_data) * len);
       int i = 0;
@@ -43,9 +43,9 @@ void *comsume(void *arg) {
          memcpy(&(buffer_data[i]), &(usd_buffer[usd_tail + i]), sizeof(user_send_data));
       }
       for (i = 0; i < len; ++i) {
-         printf("buffer_data[%d].fd = %d\n", i, buffer_data[i].fd);
-         printf("buffer_data[%d].data = %s\n", i, buffer_data[i].data);
-         printf("buffer_data[%d].send_time.tv = %ld\n", i, buffer_data[i].send_time.tv_sec);
+         //printf("buffer_data[%d].fd = %d\n", i, buffer_data[i].fd);
+         //printf("buffer_data[%d].data = %s\n", i, buffer_data[i].data);
+         //printf("buffer_data[%d].send_time.tv = %ld\n", i, buffer_data[i].send_time.tv_sec);
       } 
       usd_tail += len;
       if (usd_tail > usd_head) {
@@ -55,10 +55,10 @@ void *comsume(void *arg) {
    } 
    pthread_mutex_unlock(&buffer_list_mutex);
    if (buffer_data) {
-      printf("in comsume write data\n");
+      //printf("in comsume write data\n");
       //excuteSql(mysql, "START TRANSACTION");
       mysql_query(mysql, "START TRANSACTION");
-      printf("here bug?\n");
+      //printf("here bug?\n");
       int i = 0;
       char sql[1024] ;
       pthread_mutex_lock(&users_lock);
@@ -89,11 +89,11 @@ void product() {
 void *updateOnlineUsers(void *arg) {
    MainWindow *w = (MainWindow *)arg;
    while (1) {
-       printf("in updateOnlineUsers while\n");
+       //printf("in updateOnlineUsers while\n");
       if (is_update) { 
-          printf("is_update = 1. here\n");
+          ////printf("is_update = 1. here\n");
          w->sendUpdateMsg();
-         printf("sendUpdateMsg\n");
+         //printf("sendUpdateMsg\n");
       }
       sleep(2);
    }

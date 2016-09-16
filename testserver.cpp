@@ -16,6 +16,7 @@
 #include "sql.h"
 #include "macro.h"
 #include "mainwindow.h"
+#include "utils.h"
 
 using namespace std;
 
@@ -49,7 +50,7 @@ MainWindow *w = NULL;
 FILE *log_file_fp = NULL;
 //user_fd_sign *project_ids[1024];
 
-const char *server_log_file = "server.log";
+const char *server_log_file = "/home/server/server.log";
 const int log_level = 3;
 
 /**
@@ -133,31 +134,35 @@ int freeProjectMap(int fd) {
    /*
     * debug
     */
+   /*
    printf("in freeProjectMap fd = %d\n", fd);
    for (i = 0; i < it->second.size(); ++i) {
       set<fd_device_id_type>::iterator ite;
       for (ite = it->second[i].begin(); ite != it->second[i].end(); ++ite) {
          memcpy(&device_id_t, ite->device_id, 8);
-         printf("in freeProjectMap %ld set fd = %d, device_id: %llx\n", i, (*ite).fd, device_id_t);
+         //printf("in freeProjectMap %ld set fd = %d, device_id: %llx\n", i, (*ite).fd, device_id_t);
       }
    }
+   */
    for (i = 0; i < it->second.size(); ++i) {
       set<fd_device_id_type>::iterator ite = it->second[i].find(fd_device_id);
       memcpy(&device_id_t, ite->device_id, 8);
-      printf("after sest.find() i = %ld : ite->fd = %d, ite->device_id = %llx\n", i, ite->fd, device_id_t);
+      //printf("after sest.find() i = %ld : ite->fd = %d, ite->device_id = %llx\n", i, ite->fd, device_id_t);
       if (ite != it->second[i].end()) {
          it->second[i].erase(ite);
          break;
       }
    }
-   printf("in freeProjectMap after del device\n");
+   //printf("in freeProjectMap after del device\n");
+   /*
    for (i = 0; i < it->second.size(); ++i) {
       set<fd_device_id_type>::iterator ite;
       for (ite = it->second[i].begin(); ite != it->second[i].end(); ++ite) {
          memcpy(&device_id_t, ite->device_id, 8);
-         printf("in freeProjectMap %ld set fd = %d, device_id: %llx\n", i, (*ite).fd, device_id_t);
+         //printf("in freeProjectMap %ld set fd = %d, device_id: %llx\n", i, (*ite).fd, device_id_t);
       }
    }
+   */
    return 0;
 }
 
@@ -182,7 +187,7 @@ int getSigByDeviceId(char device_id[8]) {
 
 int *getTransmitFdsByrules(int fd, int *length) {
    // TODO:
-   printf("in getTransmitFdsByrules fd = %d\n", fd);
+   //printf("in getTransmitFdsByrules fd = %d\n", fd);
    int *res = (int *)malloc(sizeof(int) * 1024);
 
    project_id_type project_id_t;
@@ -196,14 +201,14 @@ int *getTransmitFdsByrules(int fd, int *length) {
       printf("here should not be excute\n");
       return res;
    }
-   printf("in getTransmitFdsByrules sig = %d\n", sig);
+   //printf("in getTransmitFdsByrules sig = %d\n", sig);
    int send = -1;
    send = sig;
    if (sig == 0) send = 1;
    if (sig == 1) send = 0;
    if (sig == 2) send = 2;
    int len = 0; 
-   printf("in getTransmitFdsByrules send = %d\n", send);
+   //printf("in getTransmitFdsByrules send = %d\n", send);
    if (send < 3) {
       for (set<fd_device_id_type>::iterator ite = it->second[send].begin(); ite != it->second[send].end(); ++ite) {
          if ((*ite).fd != fd) res[len++] = (*ite).fd;
@@ -219,7 +224,7 @@ int *getTransmitFdsByrules(int fd, int *length) {
       }
    }
    (*length) = len;
-   printf("*length = %d\n", *length);
+   //printf("*length = %d\n", *length);
    return res;
 }
 
@@ -234,6 +239,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    }  
    read = recv(watcher->fd, buffer, BUFFER_SIZE, 0);  
    if(read < 0)  {  
+      perror("read_cb");
       printf("read error\n");  
       return;  
    }  
@@ -267,14 +273,14 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    w->sendMsg((string)s_tmp);
 
    char *data = buffer;
-   printf("data = %s\n", data);
+   //printf("data = %s\n", data);
    
    // transmit data to other divice depend on some rules.
    int len = 0;
    int *transmit_fds = getTransmitFdsByrules(watcher->fd, &len);
-   printf("fd = %d\tlen = %d\n", watcher->fd, len);
+   //printf("fd = %d\tlen = %d\n", watcher->fd, len);
    for (int i = 0; i < len; ++i) {
-      printf("transmit_fds[%d] = %d\n", i, transmit_fds[i]);
+      //printf("transmit_fds[%d] = %d\n", i, transmit_fds[i]);
    }
    // TODO
    /*
@@ -286,7 +292,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       memcpy(usd_buffer[usd_head].data, data, strlen(data));
    }
    if (usd_head - usd_tail + 1 >= ONCE_WRITE_LEN) {
-      printf("send a signal to read thread\n");
+      //printf("send a signal to read thread\n");
       pthread_cond_signal(&buffer_list_cond);
    }
 
@@ -329,13 +335,13 @@ int checkReduplicateID(char project_id[8], char device_id[8]) {
 }
 
 int isForbiddenID(char project_id[8], char device_id[8]) {
-   printf("in isForbiddenID\n");
+   //printf("in isForbiddenID\n");
    project_device_id_type pdt;
    memcpy(pdt.project_id, project_id, 8);
    memcpy(pdt.device_id, device_id, 8);
-   printf("in waiting for forbidden_IDs_lock\n");
+   //printf("in waiting for forbidden_IDs_lock\n");
    pthread_mutex_lock(&forbidden_IDs_lock);
-   printf("get forbidden_IDs_lock\n");
+   //printf("get forbidden_IDs_lock\n");
    if (forbidden_IDs.find(pdt) != forbidden_IDs.end()) {
       pthread_mutex_unlock(&forbidden_IDs_lock);
       return 1;
@@ -355,8 +361,9 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       return ;  
    }  
    read = recv(watcher->fd, buffer, ID_SIZE, 0);  
-   printf("in comfirm _cb\n");
+   //printf("in comfirm _cb\n");
    if(read < 0)  {  
+      perror("comfirm_cb");
       printf("read error\n");  
       freelibev(loop, watcher->fd);  
       return;  
@@ -369,11 +376,11 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       return;  
    } 
    //printf("receive message:%s\n", buffer); 
-   printf("receive msg\n");
+   //printf("receive msg\n");
    //w->sendMsg("receive msg");
    ssize_t i = 0;
    for (i = 0; i < read; i++) {
-      printf("buffer[%ld] = %x\n", i, buffer[i]);
+      //printf("buffer[%ld] = %x\n", i, buffer[i]);
       char s_tmp[64];
       memset(s_tmp, 0, 64);
       sprintf(s_tmp, "buffer[%ld] = %x", i, buffer[i]);
@@ -390,7 +397,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       return ;
    }
    
-   printf("ID is right\n");
+   //printf("ID is right\n");
    //w->sendMsg("ID is right");
 
    char project_id[8], device_id[8];
@@ -408,25 +415,30 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    int sig = getSigByDeviceId(device_id);
    if (sig < 0) {
       printf("ID error\n");
+      printf("device_id = :");
+      for (int k = 0; k < 8; ++k) {
+         printf("%x ", device_id[k]);
+      }
+      printf("\n");
       result[0] = 0x01;
       send(watcher->fd, result, 1, 0);
       freelibev(loop, watcher->fd);
       return ;
    }
    //printf("project_id = %s, device_id = %s\n", project_id, device_id);
-   printf("sig = %d\n", sig);
+   //printf("sig = %d\n", sig);
 
    /** TODO check the ID can be used or not.*/
    send(watcher->fd, result, 1, 0);
    // TODO
    // check ID reduplicate or not.
    unsigned long long device_id_tmp;
-   printf("sizeof(unsigned long long) = %ld\n", sizeof(unsigned long long));
+   //printf("sizeof(unsigned long long) = %ld\n", sizeof(unsigned long long));
    memcpy(&device_id_tmp, device_id, 8);
    if (checkReduplicateID(project_id, device_id)) {
       printf("error. reduplicate ID. ID = %llx\n", device_id_tmp);
       for (int i = 0; i < 8; i++) {
-         printf("device_id[%d] = %x\n", i, device_id[i]);
+         //printf("device_id[%d] = %x\n", i, device_id[i]);
       }
       result[0] = 0x01;
       send(watcher->fd, result, 1, 0);
@@ -469,10 +481,10 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    pthread_mutex_lock(&users_lock);
    users[fd] = (struct user_fd_sign *)malloc(sizeof(user_fd_sign));
    char *ip = inet_ntoa(sa.sin_addr);
-   printf("ip = %s\nip.length = %ld\n", ip, strlen(ip));
+   //printf("ip = %s\nip.length = %ld\n", ip, strlen(ip));
    memset(users[fd]->ip, 0, 32);
    memcpy(users[fd]->ip, ip, strlen(ip));
-   printf("after memcpy, users[fd]->ip.length = %ld\n", strlen(users[fd]->ip));
+   //printf("after memcpy, users[fd]->ip.length = %ld\n", strlen(users[fd]->ip));
    users[fd]->port = ntohs(sa.sin_port);
    memcpy(users[fd]->project_id ,project_id, 8);
    memcpy(users[fd]->device_id, device_id, 8);
@@ -480,9 +492,9 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    pthread_mutex_unlock(&users_lock);
 
    user_num++;
-   printf("user_num = %d\n", user_num);
-   printf("users[%d].ip = %s\n", fd, users[fd]->ip);
-   printf("users[%d].ip.len = %ld\n", fd, strlen(users[fd]->ip));
+   //printf("user_num = %d\n", user_num);
+   //printf("users[%d].ip = %s\n", fd, users[fd]->ip);
+   //printf("users[%d].ip.len = %ld\n", fd, strlen(users[fd]->ip));
 
    project_id_type project_id_tmp;
    memset(project_id_tmp.project_id, 0, 8);
@@ -493,7 +505,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    memcpy(fd_device_id.device_id, device_id, 8);
    //sleep(3);
 
-   printf("project_id:");
+   //printf("project_id:");
 
    //printf("project_id_tmp = %llx\n", project_id_tmp);
    map<project_id_type, vector<set<fd_device_id_type> > >::iterator it = project_ids.find(project_id_tmp);
@@ -501,11 +513,11 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       vector<set<fd_device_id_type> > same_p_id(5);
       same_p_id[sig].insert(fd_device_id);
       project_ids.insert(pair<project_id_type, vector<set<fd_device_id_type> > >(project_id_tmp, same_p_id));
-      printf("create a new project, ID = \n");
+      //printf("create a new project, ID = \n");
       for (int i = 0; i < 8; ++i) {
-         printf("%x ", project_id_tmp.project_id[i]);
+         //printf("%x ", project_id_tmp.project_id[i]);
       }
-      printf("\n");
+      //printf("\n");
    } else {
       it->second[sig].insert(fd_device_id);
    }
@@ -519,28 +531,30 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    memcpy(&(project_device_t.project_id), project_id, 8);
    //project_device_t.fd = fd;
 
-   printf("waiting for online_users_lock\n");
+   //printf("waiting for online_users_lock\n");
    pthread_mutex_lock(&online_users_lock);
-   printf("get lock\n");
+   //printf("get lock\n");
    map<project_device_id_type, int>::iterator ite = online_users.find(project_device_t);
    unsigned long long t1, t2;
    memcpy(&t1, project_device_t.project_id, 8);
    memcpy(&t2, project_device_t.device_id, 8); 
-   printf("t1 = %llx, t2 = %llx\n", t1, t2);
+   //printf("t1 = %llx, t2 = %llx\n", t1, t2);
 
-   printf("online_users.length = %ld\n", online_users.size());
+   //printf("online_users.length = %ld\n", online_users.size());
+   /*
    for (map<project_device_id_type, int>::iterator it_tmp = online_users.begin(); it_tmp != online_users.end(); ++it_tmp) {
       unsigned long long t1, t2;
       memcpy(&t1, it_tmp->first.project_id, 8);
       memcpy(&t2, it_tmp->first.device_id, 8); 
-      printf("it_tmp->first.project_id = %llx, it_tmp->first.device_id = %llx\n", t1, t2);
+      //printf("it_tmp->first.project_id = %llx, it_tmp->first.device_id = %llx\n", t1, t2);
    }
+   */
    if (ite != online_users.end()) {
       unsigned long long t1, t2;
       memcpy(&t1, ite->first.project_id, 8);
       memcpy(&t2, ite->first.device_id, 8);
-      printf("ite->first.project_id = %llx, ite->first.device_id = %llx\n", t1, t2);
-      printf("duplicate ID!\n");
+      //printf("ite->first.project_id = %llx, ite->first.device_id = %llx\n", t1, t2);
+      //printf("duplicate ID!\n");
       printf("and here should not be excute\n");
       return ;
    }
@@ -624,7 +638,7 @@ int initServer(int &sd) {
       printf("socket error\n");  
       return -1;  
    } 
-   printf("socket success\n");
+   //printf("socket success\n");
    bzero(&addr, sizeof(addr));  
    addr.sin_family = AF_INET;  
    addr.sin_port = htons(PORT);  
@@ -634,7 +648,7 @@ int initServer(int &sd) {
       return -1;  
    }  
    printf("bind success\n");
-   printf("SOMAXCONN = %d\n", SOMAXCONN);
+   //printf("SOMAXCONN = %d\n", SOMAXCONN);
    //printf("bind success\n");
    if(listen(sd, SOMAXCONN) < 0)  {  
       printf("listen error\n");  
@@ -647,7 +661,7 @@ int initServer(int &sd) {
       printf("setsockopt error in reuseaddr[%d]\n", sd);  
       return -1;  
    }  
-   printf("Reuse success\n");
+   //printf("Reuse success\n");
    return 0;
 }
 
@@ -655,17 +669,17 @@ void *init_server(void *arg) {
    w = (MainWindow *)arg;
    int ret = 0;
    int sd = 0;
+   if ((log_file_fp = fopen(server_log_file, "r+")) == NULL) { 
+      w->sendMsg("error open log file.");
+      printf("log file open error\n");
+      return (void *)-1;
+   }
    if ((ret = initServer(sd)) == -1) {
       //printf("error happen in initServer()\n");
+      wlog(ERROR, "error happen in initServer()");
       w->sendMsg("error happen in initServer()");
       return (void *)-1;
    }
-   /*
-      if ((log_file_fp = fopen(server_log_file, "r+")) == NULL) { 
-      w->sendMsg("error open log file.");
-      return (void *)-1;
-      }
-    */
    /**
     * some initial work.
     */
@@ -675,7 +689,7 @@ void *init_server(void *arg) {
    const char *database_name = "test";
    mysql = initSql(ip_string, user_name, password, database_name);
    if (mysql == NULL) {
-      printf("error may happen in mysql\n");
+      wlog(ERROR, "error may happen in mysql");
       w->sendMsg("error may happen in mysql");
       return (void *)-1;
    }
@@ -693,7 +707,7 @@ void *init_server(void *arg) {
    pthread_mutex_lock(&libevlist_lock);
    libevlist[sd] = (ev_io *)malloc(sizeof(ev_io));
    if (libevlist[sd] == NULL) {
-      printf("malloc error\n");
+      wlog(ERROR, "malloc error");
       w->sendMsg("malloc error");
       return (void *) -1;
    }
@@ -703,7 +717,7 @@ void *init_server(void *arg) {
    ev_io_start(loop, libevlist[sd]);
    pthread_mutex_unlock(&libevlist_lock);
 
-   printf("loop running\n");
+   wlog(INFO, "loop running");
    w->sendMsg("loop running");
    ev_run(loop,0);
    return (void *)0;
