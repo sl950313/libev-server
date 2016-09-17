@@ -44,10 +44,14 @@ struct user_data {
 
 struct user_send_data {
    int fd;
+   char project_id[8];
+   char device_id[8];
    char data[256];
-   struct timeval send_time;
+   time_t tm;
    user_send_data() {
       fd = 0;
+      memset(project_id, 0, 8);
+      memset(device_id, 0, 8);
       memset(data, 0, 256);
    }
 };
@@ -58,7 +62,7 @@ struct user_fd_sign {
    int port;
    char project_id[8];
    char device_id[8];
-   struct timeval begin_time;
+   time_t tm;
    //struct timeval end_time;
    user_fd_sign() {
       memset(ip, 0, 32);

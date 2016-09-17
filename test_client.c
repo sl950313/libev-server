@@ -12,7 +12,7 @@
 #include <pthread.h>
 #include <signal.h>
 
-int client_num[5] = {500, 500, 500, 500, 500}; // ref to 0,1,2,3,4.
+int client_num[5] = {2000, 2000, 2000, 2000, 2000}; // ref to 0,1,2,3,4.
 pthread_t *cl_p[5];
 //cha//r project_id[8] = {};
 char project_id[8] = {0x3C, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
@@ -103,10 +103,10 @@ void *connect_rw(void *arg) {
       pthread_t id1;
       pthread_create(&id1, NULL, _read, (void *)client_socket);
 
-      char data[32] = "hello world";
+      char data[32] = "hello_world";
       while (1) {
          //printf("in send data loop\n");
-         //int nsend = send(client_socket, data, strlen(data), 0);
+         int nsend = send(client_socket, data, strlen(data), 0);
          //printf("nsend = %d\n", nsend);
          sleep(5);
       }
@@ -149,7 +149,7 @@ int main() {
          check(ID);
          pthread_create(&(cl_p[i][j]), NULL, connect_rw, (void *)ID);
          device_id += 1000000009651;
-         usleep(100000);
+         usleep(10000);
       }
    }
 

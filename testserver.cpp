@@ -33,7 +33,7 @@ set<project_device_id_type> forbidden_IDs;
 
 //struct user_send_data *usd_buffer_head = NULL;
 //struct user_send_data *usd_buffer_tail = NULL;
-struct user_send_data usd_buffer[1024];
+struct user_send_data usd_buffer[MAX_ALLOWED_CLIENT];
 int usd_head = -1, usd_tail = 0;
 int max_buffer_len = 1024;
 int buffer_len = 0;
@@ -188,7 +188,7 @@ int getSigByDeviceId(char device_id[8]) {
 int *getTransmitFdsByrules(int fd, int *length) {
    // TODO:
    //printf("in getTransmitFdsByrules fd = %d\n", fd);
-   int *res = (int *)malloc(sizeof(int) * 1024);
+   int *res = (int *)malloc(sizeof(int) * MAX_TRANSMIT_USER);
 
    project_id_type project_id_t;
    memset(project_id_t.project_id, 0, 8);
@@ -268,11 +268,15 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    char info[64] = {0};
    //sprintf(info, "in read_cb receive message:%s\n", buffer); 
    //wlog(INFO, info);
-   char s_tmp[128];
-   memset(s_tmp, 0, 128);
+   char s_tmp[256];
+   memset(s_tmp, 0, 256);
    memcpy(&device_id_tmp, users[watcher->fd]->device_id, 8);
    memcpy(&project_id_tmp, users[watcher->fd]->project_id, 8);
-   sprintf(s_tmp, "receive message:%s from device_id:%llx, project_id:%llx , ip:%s",  buffer, device_id_tmp, project_id_tmp, users[watcher->fd]->ip);
+   //struct timeval tm_t;
+   //gettimeofday(&tm_t, NULL);
+   time_t timep = time(NULL);
+   struct tm *p_tm = localtime(&timep);
+   sprintf(s_tmp, "receive message:%s from device_id:%llx, project_id:%llx , ip:%s, time:%d%d%d-%d:%d:%d",  buffer, device_id_tmp, project_id_tmp, users[watcher->fd]->ip, (p_tm->tm_year + 1900), (p_tm->tm_mon + 1), p_tm->tm_mday, p_tm->tm_hour, p_tm->tm_min, p_tm->tm_sec);
    w->sendMsg((string)s_tmp);
    wlog(INFO, s_tmp);
 
@@ -293,7 +297,10 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    pthread_mutex_lock(&buffer_list_mutex);
    if (usd_head < max_buffer_len) { 
       usd_buffer[++usd_head].fd = watcher->fd;
+      memcpy(usd_buffer[usd_head].project_id, &project_id_tmp, 8);
+      memcpy(usd_buffer[usd_head].device_id, &device_id_tmp, 8);
       memcpy(usd_buffer[usd_head].data, data, strlen(data));
+      usd_buffer[usd_head].tm = timep;
    }
    if (usd_head - usd_tail + 1 >= ONCE_WRITE_LEN) {
       //printf("send a signal to read thread\n");

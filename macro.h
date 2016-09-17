@@ -2,6 +2,7 @@
 #define MARCO_H
 
 #define MAX_ALLOWED_CLIENT 10240
+#define MAX_TRANSMIT_USER 10240
 #define ONCE_WRITE_LEN 100
 
 #define PORT 10008
