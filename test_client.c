@@ -12,7 +12,7 @@
 #include <pthread.h>
 #include <signal.h>
 
-int client_num[5] = {100, 200, 200, 200, 100}; // ref to 0,1,2,3,4.
+int client_num[5] = {500, 500, 500, 500, 500}; // ref to 0,1,2,3,4.
 pthread_t *cl_p[5];
 //cha//r project_id[8] = {};
 char project_id[8] = {0x3C, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
@@ -21,28 +21,33 @@ char ip[32] = "114.214.169.173";
 
 void *_read(void *arg) {
    sleep(1);
-   printf("in thread _read. thread_id = %ld\n", pthread_self());
+   //printf("in thread _read. thread_id = %ld\n", pthread_self());
    int sock_fd = (int )arg;
    char buffer[1024];
    while (1) {
-      printf("in recv loop\n");
+      //printf("in recv loop\n");
       int len = recv(sock_fd, buffer, 1024, 0);
+      if (len == 0) {
+         printf("sock_fd closed\n");
+         close(sock_fd);
+      }
       buffer[len] = 0x00;
-      printf("recv len = %d\n", len);
-      printf("recv data = %s\n", buffer);
+      //printf("recv len = %d\n", len);
+      //printf("recv data = %s\n", buffer);
       //sleep(1);
+      usleep(10000);
    }
    return (void *)0;
 }
 
 void *connect_rw(void *arg) {
    char *ID = (char *)arg;
-   printf("in connect_thread. thread_id = %ld\n", pthread_self());
+   //printf("in connect_thread. thread_id = %ld\n", pthread_self());
    int i = 0 ;
    for (i = 0; i < 16; ++i){
-      printf("%x\t", ID[i]);
+      //printf("%x\t", ID[i]);
    }
-   printf("\n");
+   //printf("\n");
    char project_id[8], device_id[8];
    memcpy(project_id, ID, 8);
    memcpy(device_id, ID + 8, 8);
@@ -76,20 +81,20 @@ void *connect_rw(void *arg) {
       printf("setsockopt error in reuseaddr[%d]\n", client_socket);  
       return (void *)-1;  
    }  
-   printf("Reuse success\n");
+   //printf("Reuse success\n");
 
 
    char buffer[16];
    //int len = 0;
    int len = recv(client_socket, buffer, 16, 0);
-   printf("recv msg = %s, len = %d\n", buffer, len);
+   //printf("recv msg = %s, len = %d\n", buffer, len);
 
    if (strcmp(buffer, "comfirm") == 0) { 
       int send_len = send(client_socket, ID, 16, 0);
-      printf("send len = %d \n", send_len);
+      //printf("send len = %d \n", send_len);
       memset(buffer, 0, 16);
       int result = recv(client_socket, buffer, 16, 0);
-      printf("len in result = %d\n", result);
+      //printf("len in result = %d\n", result);
       char tmp = 0x01;
       if (buffer[0] == tmp) {
          printf("fail by server. Error : wrong ID\n");
@@ -100,9 +105,9 @@ void *connect_rw(void *arg) {
 
       char data[32] = "hello world";
       while (1) {
-         printf("in send data loop\n");
-         int nsend = send(client_socket, data, strlen(data), 0);
-         printf("nsend = %d\n", nsend);
+         //printf("in send data loop\n");
+         //int nsend = send(client_socket, data, strlen(data), 0);
+         //printf("nsend = %d\n", nsend);
          sleep(5);
       }
    }
@@ -144,7 +149,7 @@ int main() {
          check(ID);
          pthread_create(&(cl_p[i][j]), NULL, connect_rw, (void *)ID);
          device_id += 1000000009651;
-         usleep(10000);
+         usleep(100000);
       }
    }
 

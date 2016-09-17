@@ -130,7 +130,7 @@ int freeProjectMap(int fd) {
       return -1;
    }
    size_t i = 0;
-   printf("should be del fd = %d, device_id = %llx\n", fd, device_id_t);
+   //printf("should be del fd = %d, device_id = %llx\n", fd, device_id_t);
    /*
     * debug
     */
@@ -232,6 +232,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    char buffer[BUFFER_SIZE];  
    memset(buffer, 0, BUFFER_SIZE);
    ssize_t read;  
+   char tmp[256];
 
    if(EV_ERROR & revents)  {  
       printf("error event in read\n");  
@@ -246,17 +247,17 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
    unsigned long long device_id_tmp, project_id_tmp;
    if(read == 0)  {  
-      printf("client disconnected.\n");  
+      //printf("client disconnected.\n");  
       /**
        * free user login info. and project info.@sl
        */
 
-      char tmp[128];
-      memset(tmp, 0, 128);
+      memset(tmp, 0, 256);
       memcpy(&device_id_tmp, users[watcher->fd]->device_id, 8);
       memcpy(&project_id_tmp, users[watcher->fd]->project_id, 8);
       sprintf(tmp, "device id:%llx, project id:%llx, ip:%s leave the server", device_id_tmp, project_id_tmp, users[watcher->fd]->ip);
       w->sendMsg((string)tmp);
+      wlog(INFO, tmp);
       updateToDatabase(watcher->fd);
       freeProjectMap(watcher->fd);
       freeOnlineUserMap(watcher->fd);
@@ -264,13 +265,16 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       freelibev(loop, watcher->fd);
       return;  
    }
-   printf("in read_cb receive message:%s\n", buffer); 
+   char info[64] = {0};
+   //sprintf(info, "in read_cb receive message:%s\n", buffer); 
+   //wlog(INFO, info);
    char s_tmp[128];
    memset(s_tmp, 0, 128);
    memcpy(&device_id_tmp, users[watcher->fd]->device_id, 8);
    memcpy(&project_id_tmp, users[watcher->fd]->project_id, 8);
    sprintf(s_tmp, "receive message:%s from device_id:%llx, project_id:%llx , ip:%s",  buffer, device_id_tmp, project_id_tmp, users[watcher->fd]->ip);
    w->sendMsg((string)s_tmp);
+   wlog(INFO, s_tmp);
 
    char *data = buffer;
    //printf("data = %s\n", data);
@@ -353,6 +357,7 @@ int isForbiddenID(char project_id[8], char device_id[8]) {
 void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    char buffer[ID_SIZE];
    ssize_t read;
+   char tmp[256] = {0};
    //int _register = 0;
 
    if(EV_ERROR & revents)  {  
@@ -370,6 +375,8 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    }  
    if(read == 0)  {  
       printf("in comfirm_cb client disconnected.\n");  
+      wlog(ERROR, "in comfirm_cb client disconnected");
+      perror("comfirm_cb:read == 0");
       //close(watcher->fd);
       //ev_io_stop(EV_A_ watcher);
       freelibev(loop, watcher->fd);  
@@ -389,7 +396,9 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    }
    char result[1] = {0x00};
    if (checkRegMsg(buffer)) {
-      printf("check msg ID error\n");
+      memset(tmp, 0, 256);
+      sprintf(tmp, "check msg ID error. %s:%d", __FILE__, __LINE__);
+      wlog(ERROR, tmp);
       w->sendMsg("check msg ID error");
       result[0] = 0x01;
       send(watcher->fd, result, 1, 0);
@@ -409,6 +418,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    if (isForbiddenID(project_id, device_id)) {
       printf("id is forbidden by server\n");
       w->sendMsg("id is forbidden by server");
+      wlog(ERROR, "id is forbidden by server");
       char result[] = "ID is forbidden";
       send(watcher->fd, result, strlen(result), 0);
    }
@@ -435,8 +445,11 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    unsigned long long device_id_tmp;
    //printf("sizeof(unsigned long long) = %ld\n", sizeof(unsigned long long));
    memcpy(&device_id_tmp, device_id, 8);
+   //char tmp[64] = {0};
    if (checkReduplicateID(project_id, device_id)) {
-      printf("error. reduplicate ID. ID = %llx\n", device_id_tmp);
+      memset(tmp, 0, 256);
+      sprintf(tmp, "error. reduplicate ID. ID = %llx. %s:%d", device_id_tmp, __FILE__, __LINE__);
+      wlog(ERROR, tmp);
       for (int i = 0; i < 8; i++) {
          //printf("device_id[%d] = %x\n", i, device_id[i]);
       }
@@ -445,7 +458,9 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       freelibev(loop, watcher->fd);
       return ; 
    }
-   printf("not reduplicateID. ID = %llx\n", device_id_tmp);
+   memset(tmp, 0, 256);
+   sprintf(tmp, "not reduplicateID. ID = %llx. %s:%d", device_id_tmp, __FILE__, __LINE__);
+   wlog(INFO, tmp);
    /*
    for (int i = 0; i < 8; i++) {
       printf("device_id[%d] = %x\n", i, device_id[i]);
@@ -461,20 +476,25 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    //freelibev(loop, watcher->fd);
    struct ev_io *data_transform = (struct ev_io *)malloc(sizeof(struct ev_io));
    if (!data_transform) {
-      printf("malloc error\n");
+      //printf("malloc error\n");
+      wlog(ERROR, "malloc error");
       freelibev(loop, watcher->fd);
       return ;
    } 
    if(EV_ERROR & revents) {  
       freelibev(loop, watcher->fd);
-      printf("error event in accept\n");  
+      //printf("error event in accept\n");  
+      wlog(ERROR, "error event in accept");
       return ;  
    }  
    struct sockaddr_in sa;
    socklen_t len;
    len = sizeof(sa);
    if (getpeername(watcher->fd, (struct sockaddr *)&sa, &len)) {
-      printf("error happen\n");
+      //printf("error happen\n");
+      memset(tmp, 0, 64);
+      sprintf(tmp, "error in getpeername. %s:%d", __FILE__, __LINE__);
+      wlog(ERROR, tmp);
       freelibev(loop, watcher->fd);
       return ;
    }
@@ -514,14 +534,16 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       same_p_id[sig].insert(fd_device_id);
       project_ids.insert(pair<project_id_type, vector<set<fd_device_id_type> > >(project_id_tmp, same_p_id));
       //printf("create a new project, ID = \n");
-      for (int i = 0; i < 8; ++i) {
-         //printf("%x ", project_id_tmp.project_id[i]);
-      }
+      memset(tmp, 0, 64);
+      unsigned long long project_id_num;
+      memcpy(&project_id_num, project_id, 8);
+      sprintf(tmp, "create a new project. ID = %llx", project_id_num);
+      wlog(INFO, tmp);
       //printf("\n");
    } else {
       it->second[sig].insert(fd_device_id);
    }
-   printf("insert ok!\n");
+   //printf("insert ok!\n");
 
    /**
     * insert into online_users.
@@ -535,27 +557,17 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    pthread_mutex_lock(&online_users_lock);
    //printf("get lock\n");
    map<project_device_id_type, int>::iterator ite = online_users.find(project_device_t);
-   unsigned long long t1, t2;
-   memcpy(&t1, project_device_t.project_id, 8);
-   memcpy(&t2, project_device_t.device_id, 8); 
    //printf("t1 = %llx, t2 = %llx\n", t1, t2);
 
-   //printf("online_users.length = %ld\n", online_users.size());
-   /*
-   for (map<project_device_id_type, int>::iterator it_tmp = online_users.begin(); it_tmp != online_users.end(); ++it_tmp) {
-      unsigned long long t1, t2;
-      memcpy(&t1, it_tmp->first.project_id, 8);
-      memcpy(&t2, it_tmp->first.device_id, 8); 
-      //printf("it_tmp->first.project_id = %llx, it_tmp->first.device_id = %llx\n", t1, t2);
-   }
-   */
    if (ite != online_users.end()) {
       unsigned long long t1, t2;
       memcpy(&t1, ite->first.project_id, 8);
       memcpy(&t2, ite->first.device_id, 8);
       //printf("ite->first.project_id = %llx, ite->first.device_id = %llx\n", t1, t2);
       //printf("duplicate ID!\n");
-      printf("and here should not be excute\n");
+      memset(tmp, 0, 64); 
+      sprintf(tmp, "and here should not be excute. %s:%d", __FILE__, __LINE__);
+      wlog(ERROR, tmp);
       return ;
    }
    online_users.insert(pair<project_device_id_type, int>(project_device_t, fd));
@@ -567,9 +579,10 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    memcpy(&device_id_tmp, fd_device_id.device_id, 8);
    memcpy(&project_id_t, project_id_tmp.project_id, 8);
    sprintf(str_tmp, "userID:%llx, projectID:%llx from %s:%d enter service", device_id_tmp, project_id_t, users[fd]->ip, users[fd]->port);
-   printf("str_tmp = %s\n", str_tmp);
+   //printf("str_tmp = %s\n", str_tmp);
 
    w->sendMsg((string)str_tmp);
+   wlog(INFO, str_tmp);
 
    pthread_mutex_lock(&libevlist_lock);
    libevlist[fd] = data_transform;
@@ -583,43 +596,54 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    socklen_t client_len = sizeof(client_addr);  
    int client_sd;  
    struct ev_io *w_client = (struct ev_io*) malloc(sizeof(struct ev_io));
+   char tmp[64] = {0};
 
    if(w_client == NULL) {  
       printf("malloc error in accept_cb\n");  
       w->sendMsg("malloc error in accept_cb");
+      wlog(ERROR, "malloc error in accept_cb");
       return ;  
    }  
 
    if(EV_ERROR & revents) {  
       printf("error event in accept\n");  
       w->sendMsg("error event in accept");
+      wlog(ERROR, "error event in accept");
       return ;  
    }  
    client_sd = accept(watcher->fd, (struct sockaddr*)&client_addr, &client_len);  
    if(client_sd < 0)  {  
       printf("accept error\n");  
+      perror("accept_error:");
       w->sendMsg("accept error");
+      wlog(ERROR, "accept error");
       free(w_client);
       return;  
    } 
    if( client_sd > MAX_ALLOWED_CLIENT)  {  
-      printf("fd too large[%d]\n", client_sd);  
+      memset(tmp, 0, 64);
+      sprintf(tmp, "fd too large[%d]. %s:%d", client_sd, __FILE__, __LINE__);  
+      w->sendMsg(tmp);
+      wlog(ERROR, tmp);
       close(client_sd);  
       free(w_client);
       return ;  
    }  
-   printf("accept request success\n");
-   w->sendMsg("accept request success");
+   //printf("accept request success\n");
+   //w->sendMsg("accept request success");
 
    if(libevlist[client_sd] != NULL)  {  
-      printf("client_sd not NULL fd is [%d]\n", client_sd);  
-      printf("here should not be excute\n");
+      memset(tmp, 0, 64);
+      sprintf(tmp, "client_sd not NULL fd is [%d]. %s:%d", client_sd, __FILE__, __LINE__);  
+      w->sendMsg(tmp);
+      wlog(ERROR, tmp);
+      //printf("here should not be excute\n");
       //free(w_client);
       close(client_sd);
       return ;  
    }  
-   printf("client connected\n");
-   w->sendMsg("client connected");
+   //printf("client connected\n");
+   //w->sendMsg("client connected");
    // send comfirm msg to clinet.
 
    char msg[8] = "comfirm";
@@ -632,10 +656,14 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
 int initServer(int &sd) {
    struct sockaddr_in addr;  
+   char tmp[64] = {0};
    //int addr_len = sizeof(addr);
    sd = socket(PF_INET, SOCK_STREAM, 0);
    if(sd < 0)  {  
-      printf("socket error\n");  
+      memset(tmp, 0, 64); 
+      sprintf(tmp, "socket error. %s:%d", __FILE__, __LINE__);  
+      w->sendMsg("socket error");
+      wlog(ERROR, tmp);
       return -1;  
    } 
    //printf("socket success\n");
@@ -647,11 +675,16 @@ int initServer(int &sd) {
       printf("bind error\n");  
       return -1;  
    }  
-   printf("bind success\n");
+   memset(tmp, 0, 64);
+   sprintf(tmp, "bind success. %s:%d", __FILE__, __LINE__);
+   wlog(INFO, tmp);
+   
    //printf("SOMAXCONN = %d\n", SOMAXCONN);
    //printf("bind success\n");
    if(listen(sd, SOMAXCONN) < 0)  {  
-      printf("listen error\n");  
+      memset(tmp, 0, 64);
+      sprintf(tmp, "listen error. %s:%d", __FILE__, __LINE__);  
+      wlog(ERROR, tmp);
       return -1;  
    } 
 
@@ -669,7 +702,7 @@ void *init_server(void *arg) {
    w = (MainWindow *)arg;
    int ret = 0;
    int sd = 0;
-   if ((log_file_fp = fopen(server_log_file, "r+")) == NULL) { 
+   if ((log_file_fp = fopen(server_log_file, "a+")) == NULL) {
       w->sendMsg("error open log file.");
       printf("log file open error\n");
       return (void *)-1;
@@ -678,6 +711,7 @@ void *init_server(void *arg) {
       //printf("error happen in initServer()\n");
       wlog(ERROR, "error happen in initServer()");
       w->sendMsg("error happen in initServer()");
+      fclose(log_file_fp);
       return (void *)-1;
    }
    /**
@@ -691,6 +725,7 @@ void *init_server(void *arg) {
    if (mysql == NULL) {
       wlog(ERROR, "error may happen in mysql");
       w->sendMsg("error may happen in mysql");
+      fclose(log_file_fp);
       return (void *)-1;
    }
 
@@ -709,6 +744,7 @@ void *init_server(void *arg) {
    if (libevlist[sd] == NULL) {
       wlog(ERROR, "malloc error");
       w->sendMsg("malloc error");
+      fclose(log_file_fp);
       return (void *) -1;
    }
 

@@ -33,6 +33,7 @@ char *mode2str(int mode) {
 
 void wlog(int mode, char *log) { 
    fprintf(log_file_fp, "%s:%s\n", mode2str(mode), log);
+   fflush(log_file_fp);
    //fprintf(fp, )
 }
 
