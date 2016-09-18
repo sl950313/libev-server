@@ -5,7 +5,7 @@
 #define MAX_TRANSMIT_USER 10240
 #define ONCE_WRITE_LEN 100
 
-#define PORT 10008
+#define PORT 8081
 #define BUFFER_SIZE 2048  
 #define MAX_ALLOWED_CLIENT 10240 
 #define ID_SIZE 16

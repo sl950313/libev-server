@@ -13,7 +13,7 @@
 #include <arpa/inet.h>
 #include "muti_thread.h"
 #include "_struct.h"
-#include "sql.h"
+//#include "sql.h"
 #include "macro.h"
 #include "mainwindow.h"
 #include "utils.h"
@@ -28,7 +28,7 @@ int user_num = 0;
 
 map<project_id_type, vector<set<fd_device_id_type > > > project_ids;
 
-map<project_device_id_type, int> online_users;
+map<project_device_id_type, online_info> online_users;
 set<project_device_id_type> forbidden_IDs;
 
 //struct user_send_data *usd_buffer_head = NULL;
@@ -45,7 +45,7 @@ pthread_mutex_t online_users_lock;
 pthread_mutex_t libevlist_lock;
 pthread_mutex_t buffer_list_mutex;
 pthread_cond_t buffer_list_cond;
-MYSQL *mysql = NULL;
+//MYSQL *mysql = NULL;
 MainWindow *w = NULL;
 FILE *log_file_fp = NULL;
 //user_fd_sign *project_ids[1024];
@@ -91,7 +91,7 @@ int freeOnlineUserMap(int fd) {
    //pd_id.fd = fd;
 
    pthread_mutex_lock(&online_users_lock);
-   map<project_device_id_type, int>::iterator it = online_users.find(pd_id);
+   map<project_device_id_type, online_info>::iterator it = online_users.find(pd_id);
    if (it != online_users.end()) { 
       online_users.erase(it);
       pthread_mutex_unlock(&online_users_lock);
@@ -134,16 +134,7 @@ int freeProjectMap(int fd) {
    /*
     * debug
     */
-   /*
-   printf("in freeProjectMap fd = %d\n", fd);
-   for (i = 0; i < it->second.size(); ++i) {
-      set<fd_device_id_type>::iterator ite;
-      for (ite = it->second[i].begin(); ite != it->second[i].end(); ++ite) {
-         memcpy(&device_id_t, ite->device_id, 8);
-         //printf("in freeProjectMap %ld set fd = %d, device_id: %llx\n", i, (*ite).fd, device_id_t);
-      }
-   }
-   */
+
    for (i = 0; i < it->second.size(); ++i) {
       set<fd_device_id_type>::iterator ite = it->second[i].find(fd_device_id);
       memcpy(&device_id_t, ite->device_id, 8);
@@ -235,13 +226,19 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    char tmp[256];
 
    if(EV_ERROR & revents)  {  
-      printf("error event in read\n");  
+      //printf("error event in read\n");
+      memset(tmp, 0, 256);
+      sprintf(tmp, "error evnt in read.errno = %s", strerror(errno));
+      wlog(ERROR, tmp);
       return ;  
    }  
    read = recv(watcher->fd, buffer, BUFFER_SIZE, 0);  
    if(read < 0)  {  
       perror("read_cb");
-      printf("read error\n");  
+      //printf("read error\n");
+      memset(tmp, 0, 256);
+      sprintf(tmp, "read_cb:read error. errno = %s", strerror(errno));
+      wlog(ERROR, tmp);
       return;  
    }  
 
@@ -276,11 +273,11 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    //gettimeofday(&tm_t, NULL);
    time_t timep = time(NULL);
    struct tm *p_tm = localtime(&timep);
-   sprintf(s_tmp, "receive message:%s from device_id:%llx, project_id:%llx , ip:%s, time:%d%d%d-%d:%d:%d",  buffer, device_id_tmp, project_id_tmp, users[watcher->fd]->ip, (p_tm->tm_year + 1900), (p_tm->tm_mon + 1), p_tm->tm_mday, p_tm->tm_hour, p_tm->tm_min, p_tm->tm_sec);
+   sprintf(s_tmp, "receive message:%s,len:%d from device_id:%llx, project_id:%llx , ip:%s, time:%d%d%d-%d:%d:%d",  buffer, read, device_id_tmp, project_id_tmp, users[watcher->fd]->ip, (p_tm->tm_year + 1900), (p_tm->tm_mon + 1), p_tm->tm_mday, p_tm->tm_hour, p_tm->tm_min, p_tm->tm_sec);
    w->sendMsg((string)s_tmp);
    wlog(INFO, s_tmp);
 
-   char *data = buffer;
+   //char *data = buffer;
    //printf("data = %s\n", data);
    
    // transmit data to other divice depend on some rules.
@@ -288,7 +285,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    int *transmit_fds = getTransmitFdsByrules(watcher->fd, &len);
    //printf("fd = %d\tlen = %d\n", watcher->fd, len);
    for (int i = 0; i < len; ++i) {
-      //printf("transmit_fds[%d] = %d\n", i, transmit_fds[i]);
+      printf("transmit_fds[%d] = %d\n", i, transmit_fds[i]);
    }
    // TODO
    /*
@@ -299,7 +296,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       usd_buffer[++usd_head].fd = watcher->fd;
       memcpy(usd_buffer[usd_head].project_id, &project_id_tmp, 8);
       memcpy(usd_buffer[usd_head].device_id, &device_id_tmp, 8);
-      memcpy(usd_buffer[usd_head].data, data, strlen(data));
+      memcpy(usd_buffer[usd_head].data, buffer, read);
       usd_buffer[usd_head].tm = timep;
    }
    if (usd_head - usd_tail + 1 >= ONCE_WRITE_LEN) {
@@ -310,12 +307,12 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    pthread_mutex_unlock(&buffer_list_mutex);
    int i = 0;
    for (i = 0; i < len; ++i) {
-      send(transmit_fds[i], data, strlen(data), 0);
+      send(transmit_fds[i], buffer, read, 0);
    }
    bzero(buffer, read);  
 }
 
-int checkRegMsg(char *msg) {
+int checkRegMsg(char *msg,int read) {
    //   if (strlen(msg) != REG_MSG_LEN) {
    //      return 1;
    //   }
@@ -324,10 +321,10 @@ int checkRegMsg(char *msg) {
    }
    int i = 0;
    char sum = 0;
-   for (i = 0; i < REG_MSG_LEN - 1; ++i) {
+   for (i = 0; i < read - 1; ++i) {
       sum += msg[i];
    }
-   return ((sum & 0xFF) == (0xFF & msg[REG_MSG_LEN - 1])) ? 0 : 1;
+   return ((sum & 0xFF) == (0xFF & msg[read - 1])) ? 0 : 1;
 }
 
 int checkReduplicateID(char project_id[8], char device_id[8]) {
@@ -367,22 +364,28 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    char tmp[256] = {0};
    //int _register = 0;
 
-   if(EV_ERROR & revents)  {  
-      printf("error event in read\n");  
-      freelibev(loop, watcher->fd);  
+   if(EV_ERROR & revents)  {
+      memset(tmp, 0, 256);
+      sprintf(tmp, "error event in read. errno = %s", strerror(errno));
+      wlog(ERROR, tmp);
+      freelibev(loop, watcher->fd);
       return ;  
    }  
    read = recv(watcher->fd, buffer, ID_SIZE, 0);  
    //printf("in comfirm _cb\n");
    if(read < 0)  {  
+       memset(tmp, 0, 256);
       perror("comfirm_cb");
-      printf("read error\n");  
-      freelibev(loop, watcher->fd);  
+      sprintf(tmp, "read error. errno = %s", strerror(errno));
+      wlog(ERROR, tmp);
+      freelibev(loop, watcher->fd);
       return;  
    }  
-   if(read == 0)  {  
-      printf("in comfirm_cb client disconnected.\n");  
-      wlog(ERROR, "in comfirm_cb client disconnected");
+   if(read == 0)  {
+       memset(tmp, 0, 256);
+
+      sprintf(tmp, "in comfirm_cb client disconnected. errno = %s", strerror(errno));
+      wlog(ERROR, tmp);
       perror("comfirm_cb:read == 0");
       //close(watcher->fd);
       //ev_io_stop(EV_A_ watcher);
@@ -401,14 +404,17 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       string s_t = s_tmp;
       //w->sendMsg(s_t);
    }
+   unsigned long p_id = 0, d_id = 0;
+   memcpy(&p_id, buffer, 8);
+   memcpy(&d_id, buffer + 8, 8);
    char result[1] = {0x00};
-   if (checkRegMsg(buffer)) {
+   if (checkRegMsg(buffer, read)) {
       memset(tmp, 0, 256);
-      sprintf(tmp, "check msg ID error. %s:%d", __FILE__, __LINE__);
+      sprintf(tmp, "check msg ID error.p_id = %llx, d_id = %llx. %s:%d", p_id, d_id, __FILE__, __LINE__);
       wlog(ERROR, tmp);
       w->sendMsg("check msg ID error");
       result[0] = 0x01;
-      send(watcher->fd, result, 1, 0);
+      //send(watcher->fd, result, 1, 0);
       freelibev(loop, watcher->fd);
       return ;
    }
@@ -423,11 +429,14 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    memcpy(device_id, buffer + 8, 8);
    data = buffer + 16;
    if (isForbiddenID(project_id, device_id)) {
-      printf("id is forbidden by server\n");
+      memset(tmp, 0, 128);
+      sprintf(tmp, "id is forbidden by server, ID = %llx, %llx", p_id, d_id);
       w->sendMsg("id is forbidden by server");
       wlog(ERROR, "id is forbidden by server");
       char result[] = "ID is forbidden";
-      send(watcher->fd, result, strlen(result), 0);
+      //send(watcher->fd, result, strlen(result), 0);
+      freelibev(loop, watcher->fd);
+      return ;
    }
    int sig = getSigByDeviceId(device_id);
    if (sig < 0) {
@@ -438,7 +447,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       }
       printf("\n");
       result[0] = 0x01;
-      send(watcher->fd, result, 1, 0);
+      //send(watcher->fd, result, 1, 0);
       freelibev(loop, watcher->fd);
       return ;
    }
@@ -446,7 +455,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    //printf("sig = %d\n", sig);
 
    /** TODO check the ID can be used or not.*/
-   send(watcher->fd, result, 1, 0);
+   //send(watcher->fd, result, 1, 0);
    // TODO
    // check ID reduplicate or not.
    unsigned long long device_id_tmp;
@@ -461,7 +470,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
          //printf("device_id[%d] = %x\n", i, device_id[i]);
       }
       result[0] = 0x01;
-      send(watcher->fd, result, 1, 0);
+      //send(watcher->fd, result, 1, 0);
       freelibev(loop, watcher->fd);
       return ; 
    }
@@ -515,7 +524,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    users[fd]->port = ntohs(sa.sin_port);
    memcpy(users[fd]->project_id ,project_id, 8);
    memcpy(users[fd]->device_id, device_id, 8);
-   gettimeofday(&(users[fd]->begin_time), NULL);
+   //gettimeofday(&(users[fd]->begin_time), NULL);
    pthread_mutex_unlock(&users_lock);
 
    user_num++;
@@ -561,9 +570,10 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    //project_device_t.fd = fd;
 
    //printf("waiting for online_users_lock\n");
+
    pthread_mutex_lock(&online_users_lock);
    //printf("get lock\n");
-   map<project_device_id_type, int>::iterator ite = online_users.find(project_device_t);
+   map<project_device_id_type, online_info>::iterator ite = online_users.find(project_device_t);
    //printf("t1 = %llx, t2 = %llx\n", t1, t2);
 
    if (ite != online_users.end()) {
@@ -577,7 +587,12 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       wlog(ERROR, tmp);
       return ;
    }
-   online_users.insert(pair<project_device_id_type, int>(project_device_t, fd));
+   online_info oi;
+   oi.tm = time(NULL);
+   struct tm *timep = localtime(&(oi.tm));
+   sprintf(oi.login_time, "%d%d%d-%d:%d:%d", (timep->tm_year + 1900), (timep->tm_mon + 1), timep->tm_mday, timep->tm_hour, timep->tm_min, timep->tm_sec);
+   memcpy(oi.ip, ip, 32);
+   online_users.insert(pair<project_device_id_type, online_info>(project_device_t, oi));
    pthread_mutex_unlock(&online_users_lock);
 
    char str_tmp[128];
@@ -585,7 +600,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    unsigned long long project_id_t;
    memcpy(&device_id_tmp, fd_device_id.device_id, 8);
    memcpy(&project_id_t, project_id_tmp.project_id, 8);
-   sprintf(str_tmp, "userID:%llx, projectID:%llx from %s:%d enter service", device_id_tmp, project_id_t, users[fd]->ip, users[fd]->port);
+   sprintf(str_tmp, "userID:%llx, projectID:%llx from %s time:%s enter service", device_id_tmp, project_id_t, oi.ip, oi.login_time);
    //printf("str_tmp = %s\n", str_tmp);
 
    w->sendMsg((string)str_tmp);
@@ -620,10 +635,11 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    }  
    client_sd = accept(watcher->fd, (struct sockaddr*)&client_addr, &client_len);  
    if(client_sd < 0)  {  
-      printf("accept error\n");  
+       memset(tmp, 0, 256);
+      sprintf(tmp, "accept error. errno = %s", strerror(errno));
       perror("accept_error:");
       w->sendMsg("accept error");
-      wlog(ERROR, "accept error");
+      wlog(ERROR, tmp);
       free(w_client);
       return;  
    } 
@@ -728,6 +744,7 @@ void *init_server(void *arg) {
    const char *user_name = "root";
    const char *password = "openstack210";
    const char *database_name = "test";
+/*
    mysql = initSql(ip_string, user_name, password, database_name);
    if (mysql == NULL) {
       wlog(ERROR, "error may happen in mysql");
@@ -735,6 +752,7 @@ void *init_server(void *arg) {
       fclose(log_file_fp);
       return (void *)-1;
    }
+*/
 
    pthread_mutex_init(&forbidden_IDs_lock, NULL);
    pthread_mutex_init(&users_lock, NULL);
@@ -743,7 +761,7 @@ void *init_server(void *arg) {
    pthread_mutex_init(&libevlist_lock, NULL);
    pthread_cond_init(&buffer_list_cond, NULL);
    pthread_t comsume_id, update_id;
-   pthread_create(&comsume_id, NULL, comsume, (void *)mysql);
+   //pthread_create(&comsume_id, NULL, comsume, (void *)mysql);
    //pthread_create(&update_id, NULL, updateOnlineUsers, (void *)0);
 
    pthread_mutex_lock(&libevlist_lock);

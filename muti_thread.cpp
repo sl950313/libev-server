@@ -20,7 +20,7 @@ extern int buffer_len;
 extern int is_update;
 
 #define min(a, b) ((a) < (b)) ? (a) : (b)
-
+/*
 void *comsume(void *arg) { 
    MYSQL *mysql = (MYSQL *)arg;
    user_send_data *buffer_data = NULL;
@@ -98,7 +98,7 @@ void *comsume(void *arg) {
 
    return (void *)0;
 }
-
+*/
 void product() {
 }
 

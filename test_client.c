@@ -12,12 +12,12 @@
 #include <pthread.h>
 #include <signal.h>
 
-int client_num[5] = {2000, 2000, 2000, 2000, 2000}; // ref to 0,1,2,3,4.
+int client_num[5] = {1000, 1000, 1000, 1000, 1000}; // ref to 0,1,2,3,4.
 pthread_t *cl_p[5];
 //cha//r project_id[8] = {};
 char project_id[8] = {0x3C, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 char sig[5] = {0x00, 0x01, 0x20, 0x30, 0xFF};
-char ip[32] = "114.214.169.173";
+char ip[32] = "205.209.163.153";
 
 void *_read(void *arg) {
    sleep(1);
@@ -66,7 +66,7 @@ void *connect_rw(void *arg) {
 
    struct sockaddr_in dest_addr;
    //int destport = atoi(argv[2]);
-   int destport = 10008;
+   int destport = 8081;
    dest_addr.sin_family = AF_INET;
    dest_addr.sin_port = htons(destport);
    dest_addr.sin_addr.s_addr = inet_addr(ip);
@@ -106,7 +106,7 @@ void *connect_rw(void *arg) {
       char data[32] = "hello_world";
       while (1) {
          //printf("in send data loop\n");
-         int nsend = send(client_socket, data, strlen(data), 0);
+         //int nsend = send(client_socket, data, strlen(data), 0);
          //printf("nsend = %d\n", nsend);
          sleep(5);
       }

@@ -9,6 +9,11 @@ struct project_id_type {
    char project_id[8];
    // self definition. no why. but needed.
    bool operator<(const project_id_type &pit) const {
+      unsigned long long tmp, t2;
+      memcpy(&tmp, pit.project_id, 8);
+      memcpy(&t2, project_id, 8);
+      return t2 < tmp;
+      
       return memcmp(project_id, pit.project_id, 8) == -1;
       //return (project_id[0] & 0xFF) < (pit.project_id[0] & 0xFF);
    }
@@ -54,6 +59,12 @@ struct user_send_data {
       memset(device_id, 0, 8);
       memset(data, 0, 256);
    }
+};
+
+struct online_info {
+   char ip[32];
+   time_t tm;
+   char login_time[64];
 };
 
 struct user_fd_sign {
