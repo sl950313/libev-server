@@ -13,7 +13,8 @@
 
 using namespace std;
 
-extern pthread_mutex_t online_users_lock, forbidden_IDs_lock;
+extern map<project_id_type, vector<set<fd_device_id_type > > > project_ids;
+extern pthread_mutex_t online_users_lock, forbidden_IDs_lock, project_ids_lock;
 extern map<project_device_id_type, int> online_users;
 extern struct ev_loop *loop;
 extern set<project_device_id_type> forbidden_IDs;
@@ -46,6 +47,35 @@ int delID(unsigned long long *project_id_num, unsigned long long *device_id_num,
    project_device_id_type pdt;
    memcpy(pdt.project_id, project_id_num, 8);
    memcpy(pdt.device_id, device_id_num, 8);
+
+   project_id_type pit;
+   memcpy(pit.project_id, project_id_num, 8);
+   pthread_mutex_lock(&project_ids_lock);
+   map<project_id_type, vector<set<fd_device_id_type > > >::iterator it = project_ids.find(pit);
+   int found = 0;
+   for (size_t i = 0; i < it->second.size(); ++i) {
+       for (set<fd_device_id_type>::iterator ite = it->second[i].begin(); ite != it->second[i].end(); ++ite) {
+           if (memcmp(ite->device_id, &project_id, 8) == 0) {
+               fd = ite->fd;
+               found = 1;
+               it->second[i].erase(ite);
+               break;
+             }
+         }
+       if (found) {
+           break;
+         }
+     }
+
+   pthread_mutex_unlock(&project_ids_lock);
+
+   if (!found) {
+       QMessageBox::information(w, "error", "ID not online");
+       return -1;
+     }
+
+
+   /*
    pthread_mutex_lock(&online_users_lock);
    map<project_device_id_type, int>::iterator it = online_users.find(pdt);
    if (it != online_users.end()) {
@@ -58,8 +88,9 @@ int delID(unsigned long long *project_id_num, unsigned long long *device_id_num,
       return -1;
    }
    pthread_mutex_unlock(&online_users_lock);
+  */
 
-   freeProjectMap(fd);
+   //freeProjectMap(fd);
    freeUserfdSign(fd);
    freelibev(loop, fd);
    QMessageBox::information(w, "info", "ID success forbidden");
@@ -89,6 +120,7 @@ int recoverID(unsigned long long *project_id_num, unsigned long long *device_id_
       QMessageBox::information(w, "info", "ID not forbidden yet");
     }
   w->sendUPdateForbiddenIDs(0, 0);
+  return 0;
 }
 
 char *strToHex(char *str, int len, char *hex) {

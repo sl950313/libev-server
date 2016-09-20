@@ -12,12 +12,13 @@
 #include <pthread.h>
 #include <signal.h>
 
-int client_num[5] = {1000, 1000, 1000, 1000, 1000}; // ref to 0,1,2,3,4.
+int client_num[5] = {20, 20, 20, 20, 10}; // ref to 0,1,2,3,4.
 pthread_t *cl_p[5];
 //cha//r project_id[8] = {};
-char project_id[8] = {0x3C, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+char project_id[8] = {0x3C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
 char sig[5] = {0x00, 0x01, 0x20, 0x30, 0xFF};
-char ip[32] = "205.209.163.153";
+//char ip[32] = "205.209.163.153";
+char ip[32] = "114.214.169.173";
 
 void *_read(void *arg) {
    sleep(1);

@@ -115,3 +115,11 @@ void *updateOnlineUsers(void *arg) {
    }
    return (void *)0;
 }
+
+void *updateOnlineNums(void *arg) {
+  MainWindow *w = (MainWindow *)arg;
+  while (1) {
+      w->sendUpdateOnlineNumsMsg();
+      sleep(2);
+    }
+}
