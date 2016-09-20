@@ -90,3 +90,11 @@ int recoverID(unsigned long long *project_id_num, unsigned long long *device_id_
     }
   w->sendUPdateForbiddenIDs(0, 0);
 }
+
+char *strToHex(char *str, int len, char *hex) {
+  //int begin = 0;
+    for (int i = 0; i < len; ++i) {
+        sprintf(hex + 2 * i, "%02x", str[i]);
+      }
+    return hex;
+}

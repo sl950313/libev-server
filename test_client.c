@@ -89,7 +89,8 @@ void *connect_rw(void *arg) {
    int len = recv(client_socket, buffer, 16, 0);
    //printf("recv msg = %s, len = %d\n", buffer, len);
 
-   if (strcmp(buffer, "comfirm") == 0) { 
+   //if (strcmp(buffer, "comfirm") == 0) { 
+   if (1) {
       int send_len = send(client_socket, ID, 16, 0);
       //printf("send len = %d \n", send_len);
       memset(buffer, 0, 16);

@@ -90,13 +90,18 @@ int freeOnlineUserMap(int fd) {
    pthread_mutex_unlock(&users_lock);
    //pd_id.fd = fd;
 
+   char tmp[128] = {0};
    pthread_mutex_lock(&online_users_lock);
    map<project_device_id_type, online_info>::iterator it = online_users.find(pd_id);
    if (it != online_users.end()) { 
       online_users.erase(it);
       pthread_mutex_unlock(&online_users_lock);
    } else {
-      printf("error in freeOnlineUserMap may happen\n");
+       unsigned long long p_id, d_id;
+       memcpy(&p_id, pd_id.project_id, 8);
+       memcpy(&d_id, pd_id.device_id, 8);
+      sprintf(tmp, "error in freeOnlineUserMap may happen. d_id = %llx,p_id = %llx", d_id, p_id);
+      wlog(ERROR, tmp);
       pthread_mutex_unlock(&online_users_lock);
       return -1;
    }
@@ -262,9 +267,14 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       freelibev(loop, watcher->fd);
       return;  
    }
-   char info[64] = {0};
-   //sprintf(info, "in read_cb receive message:%s\n", buffer); 
-   //wlog(INFO, info);
+   if ((read == 1) && ((buffer[0] & 0xFF) == 0x1)) {
+       /*
+        * here is a heart package.
+        */
+       wlog(INFO, "heart package here.");
+       return ;
+     }
+   char info[BUFFER_SIZE * 2] = {0};
    char s_tmp[256];
    memset(s_tmp, 0, 256);
    memcpy(&device_id_tmp, users[watcher->fd]->device_id, 8);
@@ -273,19 +283,18 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    //gettimeofday(&tm_t, NULL);
    time_t timep = time(NULL);
    struct tm *p_tm = localtime(&timep);
-   sprintf(s_tmp, "receive message:%s,len:%d from device_id:%llx, project_id:%llx , ip:%s, time:%d%d%d-%d:%d:%d",  buffer, read, device_id_tmp, project_id_tmp, users[watcher->fd]->ip, (p_tm->tm_year + 1900), (p_tm->tm_mon + 1), p_tm->tm_mday, p_tm->tm_hour, p_tm->tm_min, p_tm->tm_sec);
+   strToHex(buffer, read, info);
+   //printf("info = %s\n", info);
+   sprintf(s_tmp, "receive message:0x%s from device_id:%llx, project_id:%llx, ip:%s, time:%d%d%d-%d:%d:%d",  info, device_id_tmp, project_id_tmp, users[watcher->fd]->ip, (p_tm->tm_year + 1900), (p_tm->tm_mon + 1), p_tm->tm_mday, p_tm->tm_hour, p_tm->tm_min, p_tm->tm_sec);
    w->sendMsg((string)s_tmp);
    wlog(INFO, s_tmp);
 
-   //char *data = buffer;
-   //printf("data = %s\n", data);
-   
    // transmit data to other divice depend on some rules.
    int len = 0;
    int *transmit_fds = getTransmitFdsByrules(watcher->fd, &len);
    //printf("fd = %d\tlen = %d\n", watcher->fd, len);
    for (int i = 0; i < len; ++i) {
-      printf("transmit_fds[%d] = %d\n", i, transmit_fds[i]);
+      //printf("transmit_fds[%d] = %d\n", i, transmit_fds[i]);
    }
    // TODO
    /*
@@ -464,7 +473,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    //char tmp[64] = {0};
    if (checkReduplicateID(project_id, device_id)) {
       memset(tmp, 0, 256);
-      sprintf(tmp, "error. reduplicate ID. ID = %llx. %s:%d", device_id_tmp, __FILE__, __LINE__);
+      sprintf(tmp, "error. reduplicate ID. device_ID = %llx. project_id = %llx. %s:%d", device_id_tmp, p_id, __FILE__, __LINE__);
       wlog(ERROR, tmp);
       for (int i = 0; i < 8; i++) {
          //printf("device_id[%d] = %x\n", i, device_id[i]);
@@ -669,8 +678,8 @@ void accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    //w->sendMsg("client connected");
    // send comfirm msg to clinet.
 
-   char msg[8] = "comfirm";
-   send(client_sd, msg, 8, 0);
+   char msg[6] = {0x7B, 0x70, 0x69, 0x6E, 0x67, 0x7D}; // {ping}.
+   send(client_sd, msg, 6, 0);
    ev_io_init(w_client, comfirm_cb, client_sd, EV_READ);
    ev_io_start(loop, w_client);  
 
