@@ -106,7 +106,7 @@ void *updateOnlineUsers(void *arg) {
    MainWindow *w = (MainWindow *)arg;
    while (1) {
        //printf("in updateOnlineUsers while\n");
-      if (is_update) { 
+      if (1) {
           ////printf("is_update = 1. here\n");
          w->sendUpdateMsg();
          //printf("sendUpdateMsg\n");

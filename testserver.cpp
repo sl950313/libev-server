@@ -86,8 +86,8 @@ int updateToDatabase(int fd) {
 int freeOnlineUserMap(int fd) {
    project_device_id_type pd_id;
    pthread_mutex_lock(&users_lock);
-   memcpy(&(pd_id.device_id), users[fd]->device_id, 8);
-   memcpy(&(pd_id.project_id), users[fd]->project_id, 8);
+   memcpy((pd_id.device_id), users[fd]->device_id, 8);
+   memcpy((pd_id.project_id), users[fd]->project_id, 8);
    pthread_mutex_unlock(&users_lock);
 
    unsigned long long pd_id_d, pd_id_p;
@@ -182,6 +182,11 @@ int freeProjectMap(int fd) {
        total_size += it->second[i].size();
      }
    if ((i == it->second.size()) && (total_size == 0)) {
+       char tmp[128] = {0};
+       char info[32] = {0};
+       sprintf(tmp, "project ID:%s removed", strToHex(project_id.project_id, 8, info));
+       w->sendMsg(tmp);
+       wlog(INFO, tmp);
        project_ids.erase(it);
      }
    pthread_mutex_unlock(&project_ids_lock);
@@ -293,10 +298,13 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
        * free user login info. and project info.@sl
        */
 
+       pthread_mutex_lock(&users_lock);
       memset(tmp, 0, 256);
       memcpy(&device_id_tmp, users[watcher->fd]->device_id, 8);
       memcpy(&project_id_tmp, users[watcher->fd]->project_id, 8);
-      sprintf(tmp, "device id:%llx, project id:%llx, ip:%s leave the server", device_id_tmp, project_id_tmp, users[watcher->fd]->ip);
+      char _info[32] = {0}, _info2[32] = {0};
+      sprintf(tmp, "device id:%s, project id:%s, ip:%s leave the server", strToHex(users[watcher->fd]->device_id, 8, _info), strToHex(users[watcher->fd]->project_id, 8, _info2), users[watcher->fd]->ip);
+      pthread_mutex_unlock(&users_lock);
       w->sendMsg((string)tmp);
       wlog(INFO, tmp);
       updateToDatabase(watcher->fd);
@@ -316,6 +324,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    char info[BUFFER_SIZE * 2] = {0};
    char s_tmp[256];
    memset(s_tmp, 0, 256);
+   pthread_mutex_lock(&users_lock);
    memcpy(&device_id_tmp, users[watcher->fd]->device_id, 8);
    memcpy(&project_id_tmp, users[watcher->fd]->project_id, 8);
    //struct timeval tm_t;
@@ -324,7 +333,9 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    struct tm *p_tm = localtime(&timep);
    strToHex(buffer, read, info);
    //printf("info = %s\n", info);
-   sprintf(s_tmp, "receive message:0x%s from device_id:%llx, project_id:%llx, ip:%s, time:%d%d%d-%d:%d:%d",  info, device_id_tmp, project_id_tmp, users[watcher->fd]->ip, (p_tm->tm_year + 1900), (p_tm->tm_mon + 1), p_tm->tm_mday, p_tm->tm_hour, p_tm->tm_min, p_tm->tm_sec);
+   char _info[32] = {0}, _info2[32] = {0};
+   sprintf(s_tmp, "receive message:0x%s from device_id:%s, project_id:%s, ip:%s, time:%d%d%d-%d:%d:%d",  info, strToHex(users[watcher->fd]->device_id, 8, _info), strToHex(users[watcher->fd]->project_id, 8, _info2), users[watcher->fd]->ip, (p_tm->tm_year + 1900), (p_tm->tm_mon + 1), p_tm->tm_mday, p_tm->tm_hour, p_tm->tm_min, p_tm->tm_sec);
+   pthread_mutex_unlock(&users_lock);
    w->sendMsg((string)s_tmp);
    wlog(INFO, s_tmp);
 
@@ -332,13 +343,15 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    int len = 0;
    int *transmit_fds = getTransmitFdsByrules(watcher->fd, &len);
    //printf("fd = %d\tlen = %d\n", watcher->fd, len);
-   for (int i = 0; i < len; ++i) {
-      //printf("transmit_fds[%d] = %d\n", i, transmit_fds[i]);
-   }
+//   for (int i = 0; i < len; ++i) {
+//      //printf("transmit_fds[%d] = %d\n", i, transmit_fds[i]);
+//   }
    // TODO
    /*
     * do product data to usd_buffer.
     */
+
+   /*
    pthread_mutex_lock(&buffer_list_mutex);
    if (usd_head < max_buffer_len) { 
       usd_buffer[++usd_head].fd = watcher->fd;
@@ -352,6 +365,7 @@ void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       pthread_cond_signal(&buffer_list_cond);
    } 
    pthread_mutex_unlock(&buffer_list_mutex);
+   */
 
    int i = 0;
    for (i = 0; i < len; ++i) {
@@ -377,7 +391,7 @@ int checkRegMsg(char *msg,int read) {
 
 int checkReduplicateID(char project_id[8], char device_id[8]) {
    project_id_type project_id_t;
-   memcpy(&project_id_t, project_id, 8);
+   memcpy((project_id_t.project_id), project_id, 8);
    pthread_mutex_lock(&project_ids_lock);
    map<project_id_type, vector<set<fd_device_id_type> > >::iterator it = project_ids.find(project_id_t);
    size_t i = 0;
@@ -426,7 +440,7 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    //printf("in comfirm _cb\n");
    if(read < 0)  {  
        memset(tmp, 0, 256);
-      perror("comfirm_cb");
+      //perror("comfirm_cb");
       sprintf(tmp, "read error. errno = %s", strerror(errno));
       wlog(ERROR, tmp);
       freelibev(loop, watcher->fd);
@@ -605,7 +619,8 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
       memset(tmp, 0, 64);
       unsigned long long project_id_num;
       memcpy(&project_id_num, project_id, 8);
-      sprintf(tmp, "create a new project. ID = %llx", project_id_num);
+      char info[32] = {0};
+      sprintf(tmp, "create a new project. ID = %s", strToHex(project_id, 8, info));
       wlog(INFO, tmp);
       //printf("\n");
    } else {
@@ -662,7 +677,9 @@ void comfirm_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
    unsigned long long project_id_t;
    memcpy(&device_id_tmp, fd_device_id.device_id, 8);
    memcpy(&project_id_t, project_id_tmp.project_id, 8);
-   sprintf(str_tmp, "deviceID:%llx, projectID:%llx from %s time:%s enter service", device_id_tmp, project_id_t, oi.ip, oi.login_time);
+   char _info[32] = {0}, _info2[32] = {0};
+   //memset(info, 0, 32);
+   sprintf(str_tmp, "deviceID:%s, projectID:%s from ip:%s time:%s enter service", strToHex(device_id, 8, _info), strToHex(project_id, 8, _info2), oi.ip, oi.login_time);
    //printf("str_tmp = %s\n", str_tmp);
 
    w->sendMsg((string)str_tmp);
